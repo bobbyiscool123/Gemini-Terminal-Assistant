@@ -1,0 +1,8 @@
+google-generativeai>=0.3.0
+rich>=13.7.0
+python-dotenv>=1.0.0
+prompt-toolkit>=3.0.43
+pyyaml>=6.0.1
+colorama>=0.4.6
+tqdm>=4.66.1
+watchdog>=3.0.0 

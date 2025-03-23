@@ -7,20 +7,44 @@ __pycache__/
 *.so
 
 # Distribution / packaging
-dist/
+.Python
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
 *.egg-info/
+.installed.cfg
+*.egg
 
 # Virtual environments
 venv/
 env/
 ENV/
-.env
 
 # Project specific
 .env
 command_history.json
 *.log
+*.json
+/screenshots/
+logs/
+task_*.json
+geckodriver.log
+chromedriver.log
+msedgedriver.log
+*.tmp
+.pytest_cache/
+
+# Selenium and browser data
+drivers/
+.wdm/
 
 # IDE specific files
 .idea/

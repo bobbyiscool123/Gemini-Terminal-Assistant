@@ -1,98 +1,75 @@
 # Terminal AI Assistant
 
-A powerful terminal assistant that uses Google's Gemini 2.0 Flash AI to execute commands based on natural language descriptions. Similar to aider-chat but focused on terminal command execution.
+An advanced terminal assistant powered by Google's Gemini AI that helps you execute terminal commands intelligently.
 
 ## Features
 
-1. **Natural Language Command Generation**: Describe what you want to do in plain English, and the AI will generate the appropriate commands.
-2. **Real-time Command Streaming**: See command output as it happens, just like in a regular terminal.
-3. **Command History**: Keep track of all executed commands with their outputs and execution times.
-4. **Dangerous Command Protection**: Built-in safety checks for potentially dangerous commands.
-5. **Rich Terminal Interface**: Beautiful and informative terminal UI with progress bars and formatted output.
-6. **Configuration System**: Customize behavior through a YAML configuration file.
-7. **Cross-platform Support**: Works on Windows, macOS, and Linux.
-8. **Command Execution Statistics**: Track execution times and success rates.
-9. **Interactive Mode**: Natural conversation with the AI about terminal operations.
-10. **Graceful Error Handling**: Proper error handling and recovery mechanisms.
+- **Task Execution**: AI determines the best commands to execute based on your task
+- **Interactive Q&A**: AI can ask questions when needed to complete tasks
+- **Advanced Terminal UI**: Rich terminal interface with progress displays
+- **Command History**: Track and review all executed commands
+- **Smart Error Handling**: Automatic error detection and recovery suggestions
+- **Organized Logging**: Dedicated logs directory for tracking operations
 
 ## Installation
 
-1. Clone this repository:
-```bash
-git clone https://github.com/yourusername/terminal-ai-assistant.git
-cd terminal-ai-assistant
-```
-
-2. Install the required dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Create a `.env` file in the project root and add your Google API key:
-```
-GOOGLE_API_KEY=your_api_key_here
-```
+1. Clone this repository
+2. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+3. Set up your Google API key in a `.env` file:
+   ```
+   GOOGLE_API_KEY=your_api_key_here
+   ```
 
 ## Usage
 
-1. Run the assistant:
+### Using the Launcher Menu
+
+The easiest way to start the Terminal AI Assistant is by using the launcher menu:
+
+```bash
+python run_assistant.py
+```
+
+This will display a user-friendly menu where you can:
+- Start the Terminal AI Assistant
+- Check for Dependencies
+- View README
+- Exit
+
+### Direct Command Usage
+
+If you prefer to start the assistant directly:
+
 ```bash
 python terminal_ai_assistant.py
 ```
 
-2. Type your task in natural language. For example:
-```
-What would you like me to do? Create a new directory called projects and list its contents
-```
+### Commands
 
-3. The AI will generate and execute the appropriate commands in sequence.
-
-## Available Commands
-
-- `help`: Show help information
-- `exit` or `quit`: Exit the program
+- `help`: Show help message
+- `exit/quit`: Exit the program
 - `clear`: Clear the screen
 - `history`: Show command history
 - `config`: Show current configuration
-- `cd`: Change directory
+- `cd [path]`: Change directory
 - `pwd`: Show current directory
+
+## Task Execution Process
+
+1. Enter a task description when prompted.
+2. The AI will analyze the task and determine the necessary commands.
+3. The assistant will execute each command, showing progress in real-time.
+4. If errors occur, the AI will suggest ways to fix them.
+5. All executed commands are saved in the command history.
 
 ## Configuration
 
-Edit `config.yaml` to customize the assistant's behavior:
-
-- `max_history`: Maximum number of commands to keep in history
-- `auto_save`: Whether to automatically save command history
-- `theme`: Terminal theme (dark/light)
-- `stream_output`: Whether to stream command output in real-time
-- `confirm_dangerous`: Whether to ask for confirmation before executing dangerous commands
-- And more...
-
-## Safety Features
-
-- Built-in protection against dangerous commands
-- Command confirmation for potentially harmful operations
-- Timeout protection for long-running commands
-- Error handling and recovery
-
-## Example Tasks
-
-Here are some example tasks you can try:
-
-1. "Show me information about my system"
-2. "Find all text files in the current directory and display their contents"
-3. "Download a file from https://example.com/sample.txt and save it as sample.txt"
-4. "Create a new Python script that prints Hello World"
-5. "Show disk usage statistics in a human-readable format"
-
-## Advanced Usage
-
-### Custom Configuration
-
-The Terminal AI Assistant can be customized by editing the `config.yaml` file. This allows you to change various aspects of the assistant's behavior:
+Settings can be customized by creating a `config.yaml` file in the root directory with options like:
 
 ```yaml
-# Terminal AI Assistant Configuration
 max_history: 100
 auto_save: true
 theme: dark
@@ -103,16 +80,16 @@ max_retries: 3
 output_format: rich
 save_history: true
 history_file: command_history.json
-
-# AI Settings
-ai_model: gemini-2.0-flash
-temperature: 0.7
-max_tokens: 1000
 ```
 
-## Contributing
+## Future Enhancements
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+In future versions, we plan to add:
+
+- Browser automation capabilities
+- Screenshot functionality
+- Application control
+- Enhanced AI task planning
 
 ## License
 

@@ -5,6 +5,8 @@ import yaml
 import time
 import signal
 import subprocess
+import logging
+import random
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
@@ -22,7 +24,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from tqdm import tqdm
 import colorama
-from colorama import Fore
+from colorama import Fore, Style
 
 print("Starting initialization...")
 
@@ -116,70 +118,133 @@ class TerminalAIAssistant:
         """Execute a command and return its result"""
         print(f"Executing command: {command}")
         start_time = time.time()
+        
+        # Execute special commands
+        if command.startswith("ai_ask:"):
+            # AI is asking a question
+            question = command[7:].strip()
+            print(f"{Fore.YELLOW}AI is asking: {question}{Style.RESET_ALL}")
+            answer = input(f"{Fore.CYAN}> {Style.RESET_ALL}")
+            return {
+                "command": command,
+                "stdout": f"Question: {question}\nAnswer: {answer}",
+                "stderr": "",
+                "exit_code": 0,
+                "execution_time": time.time() - start_time,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            try:
+                # For standard shell commands
+                process = subprocess.Popen(
+                    command,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                
+                try:
+                    stdout, stderr = process.communicate(timeout=self.config["timeout"])
+                    end_time = time.time()
+                    
+                    # If command failed, log it more clearly
+                    if process.returncode != 0:
+                        print(f"{Fore.RED}Command failed with return code {process.returncode}{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}Command: {command}{Style.RESET_ALL}")
+                        if stderr:
+                            print(f"{Fore.RED}Error output: {stderr}{Style.RESET_ALL}")
+                    
+                    return {
+                        "command": command,
+                        "stdout": stdout,
+                        "stderr": stderr,
+                        "exit_code": process.returncode,
+                        "execution_time": end_time - start_time,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    print(f"{Fore.RED}Command timed out after {self.config['timeout']} seconds{Style.RESET_ALL}")
+                    return {
+                        "command": command,
+                        "stdout": "",
+                        "stderr": f"Command timed out after {self.config['timeout']} seconds",
+                        "exit_code": -1,
+                        "execution_time": self.config["timeout"],
+                        "timestamp": datetime.now().isoformat()
+                    }
+            except Exception as e:
+                error_msg = f"Exception while executing command: {str(e)}"
+                print(f"{Fore.RED}{error_msg}{Style.RESET_ALL}")
+                return {
+                    "command": command,
+                    "stdout": "",
+                    "stderr": error_msg,
+                    "exit_code": 1,
+                    "execution_time": time.time() - start_time,
+                    "timestamp": datetime.now().isoformat()
+                }
+
+    def stream_command_output(self, command: str):
+        """Stream command output in real-time"""
+        print(f"Streaming output for command: {command}")
         try:
             process = subprocess.Popen(
                 command,
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                bufsize=1,
+                universal_newlines=True
             )
-            stdout, stderr = process.communicate(timeout=self.config["timeout"])
-            end_time = time.time()
-            return {
-                "command": command,
-                "stdout": stdout,
-                "stderr": stderr,
-                "exit_code": process.returncode,
-                "execution_time": end_time - start_time,
-                "timestamp": datetime.now().isoformat()
-            }
-        except subprocess.TimeoutExpired:
-            process.kill()
-            return {
-                "command": command,
-                "error": "Command timed out",
-                "exit_code": -1,
-                "execution_time": self.config["timeout"],
-                "timestamp": datetime.now().isoformat()
-            }
 
-    def stream_command_output(self, command: str):
-        """Stream command output in real-time"""
-        print(f"Streaming output for command: {command}")
-        process = subprocess.Popen(
-            command,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            universal_newlines=True
-        )
-
-        while True:
-            output = process.stdout.readline()
-            if output == '' and process.poll() is not None:
-                break
-            if output:
-                self.console.print(output.strip())
-                yield output.strip()
-
-        return_code = process.poll()
-        if return_code != 0:
-            self.console.print(f"[red]Command failed with return code {return_code}[/red]")
+            while True:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    self.console.print(output.strip())
+                    yield output.strip()
+            
+            # Check for stderr output
+            stderr_output = process.stderr.read()
+            if stderr_output:
+                self.console.print(f"[red]Error output:[/red]")
+                self.console.print(stderr_output)
+                
+            return_code = process.poll()
+            if return_code != 0:
+                self.console.print(f"[red]Command failed with return code {return_code}[/red]")
+                self.console.print(f"[yellow]Command that failed: {command}[/yellow]")
+                
+                # Add recovery suggestion
+                if "command not found" in stderr_output:
+                    self.console.print(f"[yellow]Suggestion: The command may not be installed on your system.[/yellow]")
+                elif "permission denied" in stderr_output.lower():
+                    self.console.print(f"[yellow]Suggestion: You may need elevated permissions to run this command.[/yellow]")
+                
+        except Exception as e:
+            self.console.print(f"[red]Exception while executing command: {str(e)}[/red]")
+            yield f"Error: {str(e)}"
 
     def get_ai_response(self, task: str) -> List[str]:
         """Get AI response for the given task"""
         print(f"Getting AI response for task: {task}")
+        
         prompt = f"""You are a terminal command expert. Given the following task, provide a list of commands to execute in sequence.
         Each command should be a single line and should be executable in a terminal.
+        
         Task: {task}
         Current directory: {self.current_directory}
+        Operating System: {os.name} ({sys.platform})
+        
         Return only the commands, one per line, without any explanations or markdown formatting."""
 
         response = model.generate_content(prompt)
-        return [cmd.strip() for cmd in response.text.split('\n') if cmd.strip()]
+        commands = [cmd.strip() for cmd in response.text.split('\n') if cmd.strip()]
+        return commands
 
     def display_command_result(self, result: Dict):
         """Display command execution result in a formatted way"""
@@ -227,7 +292,7 @@ class TerminalAIAssistant:
                     
                     for i, command in enumerate(commands, 1):
                         progress.update(task_progress, description=f"[cyan]Executing command {i}/{len(commands)}")
-                        
+
                         if self.config["confirm_dangerous"] and self.is_dangerous_command(command):
                             if not Prompt.ask("This command might be dangerous. Continue? (y/n)").lower() == 'y':
                                 continue

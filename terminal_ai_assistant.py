@@ -193,6 +193,74 @@ class TerminalAIAssistant:
         print(f"Streaming output for command: {command}")
         start_time = time.time()
         
+        # Special handling for git commands on Windows
+        is_windows = platform.system() == "Windows"
+        is_git_command = command.strip().startswith("git ")
+        
+        if is_windows and is_git_command:
+            # Add special handling for git commands that may not work well with streaming
+            if "git commit" in command and "-m" not in command:
+                command = f"{command} -m \"Automatic commit from Terminal AI Assistant\""
+                print(f"Modified git commit command to: {command}")
+            
+            # For Windows, use a different approach for git commands
+            try:
+                # Run git commands with subprocess.run instead of Popen for better Windows compatibility
+                print(f"{Fore.CYAN}Executing git command directly...{Style.RESET_ALL}")
+                process = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True
+                )
+                
+                # Process output
+                if process.stdout:
+                    print(process.stdout)
+                    
+                # Process errors    
+                if process.stderr:
+                    print(f"{Fore.RED}Error output:{Style.RESET_ALL}")
+                    print(process.stderr)
+                
+                # Store the result
+                self.last_process_result = {
+                    "command": command,
+                    "stdout": process.stdout,
+                    "stderr": process.stderr,
+                    "exit_code": process.returncode,
+                    "execution_time": time.time() - start_time,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                # Yield a summary of what happened
+                if process.returncode == 0:
+                    yield f"Command completed successfully"
+                else:
+                    yield f"Command failed with exit code {process.returncode}"
+                
+                # Early return for git commands
+                return
+            except Exception as e:
+                error_msg = f"Exception while executing git command: {str(e)}"
+                print(f"\n{Fore.RED}{'=' * 60}{Style.RESET_ALL}")
+                print(f"{Fore.RED}ERROR EXECUTING GIT COMMAND: {command}{Style.RESET_ALL}")
+                print(f"{Fore.RED}{error_msg}{Style.RESET_ALL}")
+                print(f"{Fore.RED}{'=' * 60}{Style.RESET_ALL}\n")
+                
+                # Store error information
+                self.last_process_result = {
+                    "command": command,
+                    "stdout": "",
+                    "stderr": error_msg,
+                    "exit_code": 1,
+                    "execution_time": time.time() - start_time,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                yield f"Error: {str(e)}"
+                return
+        
         # Check for interactive commands that require input
         interactive_commands = {
             "git commit": "-m \"Automatic commit from Terminal AI Assistant\"",
@@ -244,13 +312,27 @@ class TerminalAIAssistant:
                     yield f"Error: Command timed out after {max_execution_time} seconds."
                     return
                 
-                # Try to read a line with a small timeout to allow checking execution time
+                # Try to read a line with a non-blocking approach that works on Windows
                 output = None
-                if process.stdout in select.select([process.stdout], [], [], 0.1)[0]:
+                try:
+                    # Check if process has finished
+                    if process.poll() is not None:
+                        # If process has finished and no more output, break the loop
+                        if not process.stdout.readable():
+                            break
+                    
+                    # Try to read a line non-blocking
                     output = process.stdout.readline()
-                
-                # Check if process has finished
-                if process.poll() is not None and output == '':
+                    
+                    # Small delay to prevent high CPU usage
+                    time.sleep(0.1)
+                except Exception as e:
+                    # Log the error but continue
+                    print(f"{Fore.RED}Error reading process output: {str(e)}{Style.RESET_ALL}")
+                    time.sleep(0.1)
+
+                # If we've read an empty line and process is done, break
+                if output == '' and process.poll() is not None:
                     break
                 
                 if output:
@@ -292,6 +374,13 @@ class TerminalAIAssistant:
                 
         except Exception as e:
             error_msg = f"Exception while executing command: {str(e)}"
+            # Make errors more visible with formatting and line separators
+            print(f"\n{Fore.RED}{'=' * 60}{Style.RESET_ALL}")
+            print(f"{Fore.RED}ERROR EXECUTING COMMAND: {original_command}{Style.RESET_ALL}")
+            print(f"{Fore.RED}{error_msg}{Style.RESET_ALL}")
+            print(f"{Fore.RED}{'=' * 60}{Style.RESET_ALL}\n")
+            
+            # Also log to console for rich formatting support
             self.console.print(f"[red]{error_msg}[/red]")
             
             # Store error information in the result

@@ -25,6 +25,8 @@ from watchdog.events import FileSystemEventHandler
 from tqdm import tqdm
 import colorama
 from colorama import Fore, Style
+import platform
+import select
 
 print("Starting initialization...")
 
@@ -189,6 +191,23 @@ class TerminalAIAssistant:
     def stream_command_output(self, command: str):
         """Stream command output in real-time"""
         print(f"Streaming output for command: {command}")
+        start_time = time.time()
+        
+        # Check for interactive commands that require input
+        interactive_commands = {
+            "git commit": "-m \"Automatic commit from Terminal AI Assistant\"",
+            "git pull": "--no-edit",
+            "git merge": "--no-edit"
+        }
+        
+        # Modify command if it's interactive to provide automatic input
+        original_command = command
+        for interactive_cmd, auto_arg in interactive_commands.items():
+            if command.startswith(interactive_cmd) and auto_arg not in command:
+                command = f"{command} {auto_arg}"
+                print(f"Modified potentially interactive command to: {command}")
+                break
+                
         try:
             process = subprocess.Popen(
                 command,
@@ -200,12 +219,43 @@ class TerminalAIAssistant:
                 universal_newlines=True
             )
 
+            # Set a timeout for command execution
+            max_execution_time = self.config.get("timeout", 30)  # Default 30 seconds
+            
+            # Collect all stdout lines
+            stdout_lines = []
             while True:
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
+                # Check if we've exceeded the timeout
+                if time.time() - start_time > max_execution_time:
+                    print(f"{Fore.RED}Command execution timed out after {max_execution_time} seconds.{Style.RESET_ALL}")
+                    process.kill()
+                    stderr_output = f"Command timed out after {max_execution_time} seconds."
+                    
+                    # Store timeout error in the result
+                    self.last_process_result = {
+                        "command": original_command,
+                        "stdout": "\n".join(stdout_lines),
+                        "stderr": stderr_output,
+                        "exit_code": -1,  # Use -1 for timeout
+                        "execution_time": time.time() - start_time,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    yield f"Error: Command timed out after {max_execution_time} seconds."
+                    return
+                
+                # Try to read a line with a small timeout to allow checking execution time
+                output = None
+                if process.stdout in select.select([process.stdout], [], [], 0.1)[0]:
+                    output = process.stdout.readline()
+                
+                # Check if process has finished
+                if process.poll() is not None and output == '':
                     break
+                
                 if output:
                     self.console.print(output.strip())
+                    stdout_lines.append(output.strip())
                     yield output.strip()
             
             # Check for stderr output
@@ -217,33 +267,120 @@ class TerminalAIAssistant:
             return_code = process.poll()
             if return_code != 0:
                 self.console.print(f"[red]Command failed with return code {return_code}[/red]")
-                self.console.print(f"[yellow]Command that failed: {command}[/yellow]")
+                self.console.print(f"[yellow]Command that failed: {original_command}[/yellow]")
                 
                 # Add recovery suggestion
                 if "command not found" in stderr_output:
                     self.console.print(f"[yellow]Suggestion: The command may not be installed on your system.[/yellow]")
                 elif "permission denied" in stderr_output.lower():
                     self.console.print(f"[yellow]Suggestion: You may need elevated permissions to run this command.[/yellow]")
+                elif "would be overwritten by merge" in stderr_output.lower():
+                    self.console.print(f"[yellow]Suggestion: Try running 'git stash' before this command.[/yellow]")
+                elif "editor" in stderr_output.lower() or "terminal" in stderr_output.lower():
+                    self.console.print(f"[yellow]Suggestion: This command requires an interactive terminal. Add a message argument to avoid this.[/yellow]")
+            
+            # Store the full process result for later use
+            end_time = time.time()
+            self.last_process_result = {
+                "command": original_command,
+                "stdout": "\n".join(stdout_lines),
+                "stderr": stderr_output,
+                "exit_code": return_code,
+                "execution_time": end_time - start_time,
+                "timestamp": datetime.now().isoformat()
+            }
                 
         except Exception as e:
-            self.console.print(f"[red]Exception while executing command: {str(e)}[/red]")
+            error_msg = f"Exception while executing command: {str(e)}"
+            self.console.print(f"[red]{error_msg}[/red]")
+            
+            # Store error information in the result
+            self.last_process_result = {
+                "command": original_command,
+                "stdout": "",
+                "stderr": error_msg,
+                "exit_code": 1,
+                "execution_time": time.time() - start_time,
+                "timestamp": datetime.now().isoformat()
+            }
+            
             yield f"Error: {str(e)}"
 
-    def get_ai_response(self, task: str) -> List[str]:
+    def get_ai_response(self, task: str, failed_command: str = None, error_output: str = None) -> List[str]:
         """Get AI response for the given task"""
         print(f"Getting AI response for task: {task}")
         
-        prompt = f"""You are a terminal command expert. Given the following task, provide a list of commands to execute in sequence.
-        Each command should be a single line and should be executable in a terminal.
+        # Get detailed OS information
+        os_info = f"{platform.system()} {platform.release()} ({platform.version()})"
         
-        Task: {task}
-        Current directory: {self.current_directory}
-        Operating System: {os.name} ({sys.platform})
-        
-        Return only the commands, one per line, without any explanations or markdown formatting."""
+        if failed_command and error_output:
+            # If we're regenerating after a failed command, include the error details
+            prompt = f"""You are a terminal command expert. The previous command failed. Please provide a DIFFERENT corrected command.
+
+Previous command that failed: {failed_command}
+Error message: {error_output}
+
+Task: {task}
+Current directory: {self.current_directory}
+Operating System: {os_info}
+Platform: {sys.platform}
+
+IMPORTANT: The user is on {os_info}. DO NOT generate the same command again.
+For Windows, we need to use commands that work in cmd.exe, not PowerShell.
+
+EXAMPLES of good Windows commands:
+- Instead of 'Stop-Process', use 'taskkill /F /IM program.exe'
+- Instead of 'Get-ChildItem', use 'dir'
+- Instead of 'Get-ComputerInfo', use 'systeminfo'
+
+Return only the corrected command(s), one per line, without any explanations or markdown formatting.
+DO NOT return the same command that failed."""
+        else:
+            # Standard request for new commands
+            prompt = f"""You are a terminal command expert. Given the following task, provide a list of commands to execute in sequence.
+            Each command should be a single line and should be executable in a terminal.
+            
+            Task: {task}
+            Current directory: {self.current_directory}
+            Operating System: {os_info}
+            Platform: {sys.platform}
+            
+            IMPORTANT: The user is on {os_info}. Do NOT generate commands for other operating systems.
+            For Windows, use standard cmd.exe commands that will work without PowerShell.
+            
+            EXAMPLES of good Windows commands:
+            - To close a program: 'taskkill /F /IM programname.exe'
+            - To list files: 'dir'
+            - To get system info: 'systeminfo'
+            
+            GUIDELINES FOR GIT COMMANDS:
+            - Always include a message with git commit: 'git commit -m "Your message here"'
+            - For git commands that might open an editor, add appropriate flags to prevent it
+            - Example: 'git pull --no-edit' instead of just 'git pull'
+            
+            Return only the commands, one per line, without any explanations or markdown formatting."""
 
         response = model.generate_content(prompt)
         commands = [cmd.strip() for cmd in response.text.split('\n') if cmd.strip()]
+        
+        # Add commit message if we're committing
+        if task.lower().startswith("commit") and commands and "git commit" in commands[0] and "-m" not in commands[0]:
+            commands[0] = f'git commit -m "Automatic commit from Terminal AI Assistant"'
+            
+        # Make sure we're not repeating the same failed command
+        if failed_command and commands and commands[0].strip().lower() == failed_command.strip().lower():
+            # If the AI generated the same command again, use hardcoded fallbacks for common tasks
+            if "chrome" in task.lower() and ("close" in task.lower() or "kill" in task.lower() or "stop" in task.lower()):
+                # For closing Chrome
+                return ["wmic process where name='chrome.exe' delete"]
+            elif "process" in failed_command.lower() or "taskkill" in failed_command.lower():
+                # For killing any process
+                if "/im" in failed_command.lower():
+                    process_name = failed_command.split("/IM")[1].split()[0].strip().replace('"', '')
+                    return [f"wmic process where name='{process_name}' delete"]
+                else:
+                    return ["wmic process where name='chrome.exe' delete"]
+                
         return commands
 
     def display_command_result(self, result: Dict):
@@ -297,13 +434,51 @@ class TerminalAIAssistant:
                             if not Prompt.ask("This command might be dangerous. Continue? (y/n)").lower() == 'y':
                                 continue
 
+                        # Execute the command
                         if self.config["stream_output"]:
+                            result = None
+                            stderr_output = ""
+                            
+                            # Collect stderr output during streaming
                             for output in self.stream_command_output(command):
                                 pass
+                                
+                            # Get the last process result after streaming
+                            if hasattr(self, 'last_process_result') and self.last_process_result:
+                                result = self.last_process_result
                         else:
                             result = self.execute_command(command)
                             self.display_command_result(result)
+                        
+                        # Add to history if we have a result
+                        if result:
                             self.command_history.append(result)
+                            
+                            # Check if command failed
+                            if result.get("exit_code", 0) != 0:
+                                print(f"{Fore.YELLOW}Command failed. Asking AI for an alternative command...{Style.RESET_ALL}")
+                                
+                                # Get alternative command from AI
+                                alternative_commands = self.get_ai_response(
+                                    task,
+                                    failed_command=command,
+                                    error_output=result.get("stderr", "Unknown error")
+                                )
+                                
+                                if alternative_commands:
+                                    alt_command = alternative_commands[0]
+                                    print(f"{Fore.GREEN}Trying alternative command: {alt_command}{Style.RESET_ALL}")
+                                    
+                                    # Execute alternative command
+                                    if self.config["stream_output"]:
+                                        for output in self.stream_command_output(alt_command):
+                                            pass
+                                    else:
+                                        alt_result = self.execute_command(alt_command)
+                                        self.display_command_result(alt_result)
+                                        self.command_history.append(alt_result)
+                                else:
+                                    print(f"{Fore.RED}Could not find an alternative command. Please try a different approach.{Style.RESET_ALL}")
 
                 self.save_history()
 

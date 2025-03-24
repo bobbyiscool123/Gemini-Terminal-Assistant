@@ -1,0 +1,59 @@
+backup_file:
+  description: Create a backup of a file
+  params:
+    file:
+      default: ''
+      description: File to backup
+  template: cp {{file}} {{file}}.bak
+extract_archive:
+  description: Extract an archive file
+  params:
+    archive:
+      default: ''
+      description: Archive to extract
+    command:
+      choices:
+      - tar -xf
+      - unzip
+      - 7z x
+      default: tar -xf
+      description: Extraction command
+    options:
+      default: ''
+      description: Additional options
+  template: '{{command}} {{archive}} {{options}}'
+find_files:
+  description: Find files matching a pattern
+  params:
+    directory:
+      default: .
+      description: Directory to search in
+    options:
+      default: ''
+      description: Additional find options
+    pattern:
+      default: '*.txt'
+      description: File pattern to match
+  template: find {{directory}} -name "{{pattern}}" {{options}}
+git_clone:
+  description: Clone a git repository
+  params:
+    directory:
+      default: ''
+      description: Target directory
+    repository:
+      default: ''
+      description: Repository URL
+  template: git clone {{repository}} {{directory}}
+system_info:
+  description: Get system information
+  params:
+    command:
+      choices:
+      - systeminfo
+      - hostname
+      - whoami
+      - ipconfig /all
+      default: systeminfo
+      description: Information command
+  template: '{{command}}'

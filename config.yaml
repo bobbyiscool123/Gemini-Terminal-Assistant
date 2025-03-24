@@ -29,3 +29,31 @@ timeout: 30
 ui_refresh_rate: 0.5
 use_advanced_browser: true
 use_persistent_sessions: true
+# New configuration options
+enable_voice_commands: false
+voice_recognition_language: "en-US"
+command_verification_level: "medium"
+ai_response_style: "concise"
+auto_update_check: true
+custom_command_aliases: {}
+enable_command_templates: true
+auto_correct_typos: true
+show_command_suggestions: true
+enable_command_history_search: true
+enable_command_analytics: false
+default_text_editor: "auto"
+enable_file_preview: true
+max_file_preview_size_kb: 1024
+enable_network_monitoring: false
+show_system_stats: false
+enable_notification_sounds: true
+enable_context_aware_help: true
+enable_smart_clipboard: false
+enable_command_chaining: true
+backup_history_files: true
+max_history_backups: 5
+enable_chat_mode: true
+enable_tutorial_mode: false
+# Input visibility settings
+echo_input: true
+use_standard_input: true  # Set to true to use standard Python input instead of prompt_toolkit

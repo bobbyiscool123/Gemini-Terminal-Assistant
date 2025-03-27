@@ -1,0 +1,66 @@
+# AI Terminal Assistant Testing Tasks
+
+## Core System Features
+
+1. Find all files larger than 10MB in the current directory
+2. Show CPU and memory usage in real-time
+3. Create a backup of a configuration file
+4. Create an alias for a frequently used command
+5. Change to the parent directory and list its contents
+6. Find all Python files containing the word "import"
+7. Show the current system time and date
+8. Copy all .txt files to a new directory
+9. Check if Python is installed and its version
+10. Kill a process running on port 8080
+
+## File Operations
+
+11. Rename all .txt files to .md
+12. Find duplicate files in the current directory
+13. Count the number of lines in all .py files
+14. Create a ZIP archive of a directory
+15. Sort files by size in descending order
+16. Extract a specific file from a ZIP archive
+17. Change file permissions recursively
+18. Find files modified in the last 24 hours
+19. Compare two text files for differences
+20. Delete files with specific extensions
+
+## System Management
+
+21. Monitor network connections
+22. Schedule a task to run at a specific time
+23. Check disk space usage with a visual representation
+24. List all installed packages on the system
+25. Create a new user account
+26. Check for system updates
+27. Display system hardware information
+28. View the system event logs
+29. Create a backup of system settings
+30. Check the status of system services
+
+## Network Operations
+
+31. Run a ping test to check connectivity
+32. Find your public IP address
+33. Test internet speed from the terminal
+34. Check which processes are using network connections
+35. Set up a simple HTTP server
+36. Download a file from a URL
+37. Scan open ports on a host
+38. View DNS settings
+39. Monitor incoming and outgoing network traffic
+40. Flush DNS cache
+
+## Advanced Utilities
+
+41. Create a command chain that performs a multi-step backup process
+42. Generate a script to monitor system health daily
+43. Analyze command history to find the most used commands
+44. Create a Windows PowerShell script to automate system maintenance
+45. Translate a PowerShell command to a bash equivalent
+46. Generate a visualization of disk usage
+47. Set up environment variables for a development project
+48. Create a template for standardized Git commit messages
+49. Run parallel tasks to process multiple files simultaneously
+50. Create a clipboard transformation workflow to convert text formats 

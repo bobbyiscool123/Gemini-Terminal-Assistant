@@ -1,192 +1,198 @@
-# Terminal AI Assistant
+# AI Terminal Assistant
 
-A smart terminal assistant powered by AI to help with command-line tasks. It uses Google's Gemini AI to generate terminal commands based on natural language descriptions.
+<div align="center">
 
-## Features
+![AI Terminal Assistant Logo](https://via.placeholder.com/150/0A0A2A/FFFFFF?text=AI+Terminal)
 
-- Natural language to terminal command generation
-- Command streaming with real-time output
-- Command history tracking and management
-- Aliases for frequently used commands
-- Command templates with parameter substitution
-- File preview functionality
-- System statistics monitoring
-- Command chaining for complex operations
-- Smart clipboard with text transformation
-- File backup and restoration
-- Voice command support
-- Plugin system for extending functionality
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
 
-## Installation
+**An intelligent, contextually-aware terminal assistant powered by Gemini AI**
 
-1. Clone the repository:
+</div>
+
+## ✨ Features
+
+- **🧠 Smart Task Planning** - Analyzes tasks, breaks them down into subtasks, and creates optimized execution plans
+- **🔄 Context Awareness** - Maintains conversation context and understands task relationships across interactions
+- **⚙️ Automatic Command Generation** - Creates optimal commands for your specific operating system
+- **🖥️ Cross-Platform Support** - Works seamlessly on Windows, macOS, and Linux with automatic adaptation
+- **🩹 Intelligent Error Recovery** - Automatically recovers from command failures and suggests alternatives
+- **📊 Real-time Execution Monitoring** - Streams command output with status updates and progress indicators
+- **🔍 Smart Installation Detection** - Finds existing software installations before attempting new installations
+- **📁 File Organization** - Can sort and organize files by type and content
+- **📦 Package Manager Integration** - Automatically installs Chocolatey (Windows) when needed for installing software
+- **🏃 Auto-Run Mode** - Executes tasks automatically without requiring confirmation for each step
+- **❓ Intelligent Questioning** - Asks clarifying questions only when necessary for task completion
+
+## 📋 Requirements
+
+- Python 3.8 or higher
+- Google API key for Gemini AI
+- Internet connection for AI operations
+- Windows, macOS, or Linux operating system
+
+## 🚀 Installation
+
+### 1. Clone the repository
+
 ```bash
-git clone https://github.com/yourusername/terminal-ai-assistant.git
-cd terminal-ai-assistant
+git clone https://github.com/yourusername/ai-terminal-assistant.git
+cd ai-terminal-assistant
 ```
 
-2. Install dependencies:
+### 2. Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file with your Google API key:
+### 3. Configure API access
+
+Create a `.env` file in the project root with your Google API key:
+
 ```
 GOOGLE_API_KEY=your_api_key_here
 ```
 
-## Usage
+You can obtain a Gemini API key from [Google AI Studio](https://ai.google.dev/).
 
-Run the assistant with:
+## 🎮 Usage
+
+### Starting the Assistant
+
+Run the assistant using the launcher script:
+
 ```bash
-python terminal_ai_assistant.py
+python run_agent.py
+```
+
+Or start the terminal assistant directly:
+
+```bash
+python agent_terminal.py
 ```
 
 ### Basic Commands
 
-- `help` - Show available commands
-- `exit` or `quit` - Exit the application
-- `clear` - Clear the terminal screen
-- `history` - Show command history
-- `config` - Display current configuration
-- `cd [path]` - Change directory
-- `pwd` - Show current directory
+| Command | Description |
+|---------|-------------|
+| `help` | Display help information |
+| `exit` | Exit the application |
+| `clear` | Clear the terminal screen |
+| `history` | Show command history |
+| `tasks` | Show active and completed tasks |
+| `context` | Show current context information |
+| `cd [path]` | Change directory |
+| `pwd` | Show current directory |
+| `auto on/off` | Enable/disable auto-run mode |
 
-### Advanced Features
+### Using the Assistant
 
-#### Aliases
+Simply describe what you want to do in natural language. The assistant will:
 
-- `aliases` - List all command aliases
-- `alias add [name] [command]` - Add a command alias
-- `alias remove [name]` - Remove a command alias
+1. Analyze your request and create a structured execution plan
+2. Break down the task into logical subtasks
+3. Show you the plan and begin execution
+4. Execute each subtask with appropriate commands
+5. Handle any errors and provide recovery options
+6. Complete the task and show you the results
 
-#### Templates
-
-- `templates` - List all command templates
-- `template add [name] [template]` - Add a command template
-- `template remove [name]` - Remove a command template
-- `template run [name] [params]` - Run a command template
-
-#### File Operations
-
-- `preview [file]` - Preview the content of a file
-- `backups` - List all backups
-- `backup [file]` - Backup a file
-- `restore [backup]` - Restore a backup
-
-#### System Tools
-
-- `stats` - Show system statistics
-
-#### Command Chains
-
-- `chain list` - List all command chains
-- `chain add [name] [commands]` - Add a command chain
-- `chain run [name]` - Run a command chain
-
-#### Clipboard
-
-- `clipboard` - Show clipboard contents
-- `copy [text/file]` - Copy text or file to clipboard
-- `transform [operation]` - Transform clipboard content
-
-#### Voice Commands
-
-- `voice [on/off]` - Enable or disable voice commands
-
-#### Plugins
-
-- `plugins` - List all plugins
-- `plugin enable [name]` - Enable a plugin
-- `plugin disable [name]` - Disable a plugin
-- `plugin help [name]` - Show help for a plugin
-
-## Creating Plugins
-
-You can extend the functionality of the Terminal AI Assistant by creating plugins. Plugins are Python packages that implement the `Plugin` interface.
-
-### Basic Plugin Structure
-
-Create a directory in the `plugins` folder with the following structure:
+### Example Tasks
 
 ```
-plugins/
-└── my_plugin/
-    ├── __init__.py
-    └── [other files]
+"Check if ffmpeg is installed on my system"
+"Install Python 3.11 with pip"
+"Sort my downloads folder by file type"
+"Find all JPG files larger than 5MB and compress them"
+"Create a backup of my documents folder"
+"Monitor CPU and memory usage in real-time"
+"Install Node.js and set up a new React project"
+"Find duplicate files in my pictures folder"
 ```
 
-In `__init__.py`, define a class that inherits from `Plugin`:
+## 🏗️ Architecture
 
-```python
-from utils.plugin_manager import Plugin
+The assistant is built with a modular architecture:
 
-class MyPlugin(Plugin):
-    name = "my_plugin"
-    description = "My awesome plugin"
-    version = "1.0.0"
-    
-    def __init__(self, terminal_assistant=None):
-        super().__init__(terminal_assistant)
-    
-    def initialize(self) -> bool:
-        return True
-    
-    def get_commands(self):
-        return {
-            "my_command": self.my_command
-        }
-    
-    def my_command(self, *args):
-        return "Hello from my plugin!"
-```
+- **agent_terminal.py** - Main agent implementation with task processing logic
+- **mcp_server.py** - Model Context Protocol server for system operations
+- **agent_utils.py** - Utility functions for platform detection and command validation
+- **run_agent.py** - Launcher script with dependency checking
 
-## Configuration
+## ⚙️ Configuration
 
-Edit `config.yaml` to customize the assistant's behavior:
+Customize the assistant by modifying `config.yaml`:
 
 ```yaml
-# Terminal AI Assistant Configuration
-max_history: 100
-auto_save: true
-theme: dark
-stream_output: true
-confirm_dangerous: true
-timeout: 30
-max_retries: 3
-output_format: rich
-save_history: true
-history_file: command_history.json
-enable_voice_commands: false
-show_system_stats: false
-enable_smart_clipboard: true
-enable_command_chaining: true
-backup_history_files: true
+# General Settings
+max_history: 100  # Maximum number of commands to keep in history
+history_file: "command_history.json"  # File to store command history
+max_tokens: 8000  # Maximum tokens to use in AI requests
+
+# Agent Behavior
+auto_run: true  # Execute commands automatically without confirmation
+question_probability: 0.1  # Probability of asking clarifying questions (0.0-1.0)
+
+# System Integration
+enable_mcp_server: true  # Enable the Model Context Protocol server
+scan_drives_on_startup: false  # Scan system drives during initialization
 ```
 
-## License
+## 🔍 Advanced Features
 
-MIT 
+### File Sorting and Organization
 
-## Troubleshooting
+The assistant can sort and organize files by type:
 
-### Input Not Visible
+```
+"Sort my downloads folder by file type"
+```
 
-If you notice that your typed text doesn't appear in the terminal interface as you type, this may be due to:
+This will:
+1. Analyze files in the specified directory
+2. Create folders for different file types (Images, Videos, Documents, etc.)
+3. Move files to appropriate folders
+4. Clean up empty directories
 
-1. Input handling settings in the terminal configuration
-2. The way the prompt toolkit library handles input in custom terminal applications
-3. A configuration setting that suppresses input echo
+### Software Installation
 
-To fix this issue:
+When installing software, the assistant will:
 
-1. Check if `echo_input` is set to `true` in your config.yaml:
-   ```yaml
-   echo_input: true
-   ```
+1. Check if the program is already installed
+2. Install package managers (like Chocolatey) if needed
+3. Use appropriate commands for your operating system
+4. Verify successful installation
 
-2. If using a custom terminal or console, ensure it's not in "quiet" or "no-echo" mode
+Example:
+```
+"Install ffmpeg on my system"
+```
 
-3. Some terminal emulators may have compatibility issues with the prompt_toolkit library
+### Model Context Protocol (MCP)
 
-The assistant will still process your commands even if the input isn't visible. 
+The MCP server provides system information without sending unnecessary data to the AI model:
+
+- Checks for installed software and package managers
+- Gathers system drive information
+- Provides folder structure analysis
+- Manages file operations locally
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [Google Gemini AI](https://ai.google.dev/) for providing the AI capabilities
+- All open-source libraries and tools used in this project

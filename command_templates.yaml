@@ -5,6 +5,7 @@ backup_file:
       default: ''
       description: File to backup
   template: cp {{file}} {{file}}.bak
+
 extract_archive:
   description: Extract an archive file
   params:
@@ -22,6 +23,7 @@ extract_archive:
       default: ''
       description: Additional options
   template: '{{command}} {{archive}} {{options}}'
+
 find_files:
   description: Find files matching a pattern
   params:
@@ -35,6 +37,7 @@ find_files:
       default: '*.txt'
       description: File pattern to match
   template: find {{directory}} -name "{{pattern}}" {{options}}
+
 git_clone:
   description: Clone a git repository
   params:
@@ -45,6 +48,7 @@ git_clone:
       default: ''
       description: Repository URL
   template: git clone {{repository}} {{directory}}
+
 system_info:
   description: Get system information
   params:
@@ -57,3 +61,188 @@ system_info:
       default: systeminfo
       description: Information command
   template: '{{command}}'
+
+find_large_files:
+  description: Find files larger than a specified size
+  params:
+    directory:
+      default: .
+      description: Directory to search in
+    size_mb:
+      default: '10'
+      description: Minimum file size in MB
+  template: powershell -Command "Get-ChildItem -Path {{directory}} -Recurse -File | Where-Object {$_.Length -gt ({{size_mb}} * 1MB)} | Select-Object FullName, @{Name='SizeInMB';Expression={$_.Length / 1MB}}"
+
+show_system_resources:
+  description: Display system resource usage
+  params:
+    count:
+      default: '10'
+      description: Number of processes to show
+    sort_by:
+      choices:
+      - CPU
+      - WorkingSet
+      - Id
+      default: CPU
+      description: Property to sort by
+  template: powershell -Command "Get-Process | Sort-Object -Property {{sort_by}} -Descending | Select-Object -First {{count}} Name,CPU,WorkingSet,Id"
+
+find_text_in_files:
+  description: Find files containing specific text
+  params:
+    pattern:
+      default: 'import'
+      description: Text pattern to search for
+    file_pattern:
+      default: '*.py'
+      description: Files to search in
+  template: powershell -Command "Select-String -Path {{file_pattern}} -Pattern '{{pattern}}'"
+
+copy_files:
+  description: Copy files matching a pattern to a directory
+  params:
+    source_pattern:
+      default: '*.txt'
+      description: Source file pattern
+    destination:
+      default: 'backup'
+      description: Destination directory
+  template: powershell -Command "if (!(Test-Path {{destination}})) { New-Item -ItemType Directory -Path {{destination}} }; Get-ChildItem -Path {{source_pattern}} | Copy-Item -Destination {{destination}}"
+
+rename_files:
+  description: Rename files with a pattern
+  params:
+    source_pattern:
+      default: '*.txt'
+      description: Files to rename
+    from:
+      default: '.txt'
+      description: Extension to replace
+    to:
+      default: '.md'
+      description: New extension
+  template: powershell -Command "Get-ChildItem {{source_pattern}} | Rename-Item -NewName { $_.Name -replace '{{from}}','{{to}}' }"
+
+create_zip:
+  description: Create a ZIP archive
+  params:
+    source:
+      default: '.'
+      description: Source directory or files
+    destination:
+      default: 'archive.zip'
+      description: Destination ZIP file
+  template: powershell -Command "Compress-Archive -Path {{source}} -DestinationPath {{destination}}"
+
+extract_zip:
+  description: Extract a ZIP archive
+  params:
+    archive:
+      default: 'archive.zip'
+      description: ZIP archive to extract
+    destination:
+      default: 'extracted'
+      description: Destination directory
+  template: powershell -Command "if (!(Test-Path {{destination}})) { New-Item -ItemType Directory -Path {{destination}} }; Expand-Archive -Path {{archive}} -DestinationPath {{destination}}"
+
+check_disk_space:
+  description: Check disk space usage
+  params:
+    format:
+      choices:
+      - Table
+      - List
+      default: Table
+      description: Output format
+  template: powershell -Command "Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{Name='UsedGB';Expression={[math]::Round($_.Used/1GB, 2)}}, @{Name='FreeGB';Expression={[math]::Round($_.Free/1GB, 2)}}, @{Name='TotalGB';Expression={[math]::Round(($_.Used+$_.Free)/1GB, 2)}} | Format-{{format}}"
+
+check_port:
+  description: Check which process is using a port
+  params:
+    port:
+      default: '8080'
+      description: Port number to check
+  template: powershell -Command "$proc = Get-Process -Id (Get-NetTCPConnection -LocalPort {{port}} -ErrorAction SilentlyContinue).OwningProcess; if ($proc) { $proc | Select-Object Id, ProcessName, Path } else { Write-Host 'No process is using port {{port}}' }"
+
+find_duplicate_files:
+  description: Find duplicate files in a directory
+  params:
+    directory:
+      default: '.'
+      description: Directory to search in
+  template: powershell -Command "Get-ChildItem -Path {{directory}} -File -Recurse | Get-FileHash | Group-Object -Property Hash | Where-Object Count -GT 1 | ForEach-Object { $_.Group | Select-Object Path, Hash }"
+
+count_code_lines:
+  description: Count lines in code files
+  params:
+    pattern:
+      default: '*.py'
+      description: File pattern to match
+  template: powershell -Command "$total = 0; Get-ChildItem -Path {{pattern}} -Recurse | ForEach-Object { $lines = (Get-Content $_.FullName | Measure-Object -Line).Lines; $total += $lines; Write-Host \"$($_.FullName)- $lines lines\" }; Write-Host \"Total- $total lines\""
+
+check_python_version:
+  description: Check Python version and installation
+  template: python --version
+
+find_modified_files:
+  description: Find files modified in the last N hours
+  params:
+    hours:
+      default: '24'
+      description: Hours to look back
+    directory:
+      default: '.'
+      description: Directory to search in
+  template: powershell -Command "Get-ChildItem -Path {{directory}} -Recurse -File | Where-Object { $_.LastWriteTime -gt (Get-Date).AddHours(-{{hours}}) } | Select-Object FullName, LastWriteTime"
+
+get_public_ip:
+  description: Get your public IP address
+  template: powershell -Command "Invoke-RestMethod -Uri 'http://ifconfig.me/ip'"
+
+network_connections:
+  description: Show active network connections
+  params:
+    protocol:
+      choices:
+      - TCP
+      - UDP
+      - Any
+      default: TCP
+      description: Protocol to filter by
+  template: powershell -Command "Get-NetTCPConnection | Where-Object State -eq 'Established' | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State | Format-Table"
+
+download_file:
+  description: Download a file from a URL
+  params:
+    url:
+      default: 'https://example.com/file.txt'
+      description: URL to download from
+    output:
+      default: 'downloaded_file.txt'
+      description: Output file name
+  template: powershell -Command "Invoke-WebRequest -Uri '{{url}}' -OutFile '{{output}}'"
+
+compare_files:
+  description: Compare two text files
+  params:
+    file1:
+      default: 'file1.txt'
+      description: First file
+    file2:
+      default: 'file2.txt'
+      description: Second file
+  template: powershell -Command "Compare-Object -ReferenceObject (Get-Content {{file1}}) -DifferenceObject (Get-Content {{file2}})"
+
+list_packages:
+  description: List installed packages
+  params:
+    type:
+      choices:
+      - winget
+      - choco
+      - npm
+      - pip
+      default: winget
+      description: Package manager to use
+  template: "{{type}} list"

@@ -30,8 +30,6 @@ ui_refresh_rate: 0.5
 use_advanced_browser: true
 use_persistent_sessions: true
 # New configuration options
-enable_voice_commands: false
-voice_recognition_language: "en-US"
 command_verification_level: "medium"
 ai_response_style: "concise"
 auto_update_check: true
@@ -57,3 +55,39 @@ enable_tutorial_mode: false
 # Input visibility settings
 echo_input: true
 use_standard_input: true  # Set to true to use standard Python input instead of prompt_toolkit
+
+# FFmpeg related configuration
+ffmpeg_path: null  # Will be auto-detected in terminal_ai_assistant.py
+enable_video_preview: true
+enable_video_thumbnails: true
+video_thumbnail_timestamp: "00:00:05"
+video_convert_presets:
+  mp4_h264: 
+    video_codec: "libx264"
+    audio_codec: "aac"
+    additional_args: ["-preset", "medium", "-crf", "23"]
+  webm:
+    video_codec: "libvpx-vp9"
+    audio_codec: "libopus"
+    additional_args: ["-b:v", "0", "-crf", "30", "-cpu-used", "2"]
+  mp3:
+    audio_codec: "libmp3lame"
+    additional_args: ["-q:a", "2"]
+
+# General Settings
+max_tokens: 8000
+
+# Agent Behavior
+auto_run: true  # Execute commands automatically without confirmation
+question_probability: 0.1  # Probability (0.0-1.0) of asking clarifying questions
+display_thinking: false  # Display agent thinking process
+
+# Execution Settings
+stream_output: true  # Show command output in real-time
+confirm_dangerous: true  # Confirm before executing potentially dangerous commands
+timeout: 30  # Command execution timeout in seconds
+
+# UI Settings
+use_rich_formatting: true  # Use rich text formatting if available
+show_subtask_details: true  # Show detailed information about subtasks
+progress_bar: true  # Show progress bar for long-running tasks

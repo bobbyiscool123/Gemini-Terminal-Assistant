@@ -2,8 +2,6 @@
 
 <div align="center">
 
-![AI Terminal Assistant Logo](https://via.placeholder.com/150/0A0A2A/FFFFFF?text=AI+Terminal)
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
 

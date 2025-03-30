@@ -8,6 +8,7 @@ import sys
 import subprocess
 import platform
 import shutil
+import re
 from pathlib import Path
 
 def print_color(text, color="green"):
@@ -55,6 +56,24 @@ def check_conda():
     else:
         print_color("Conda is not installed", "yellow")
         return False
+
+def is_in_virtualenv():
+    """Check if running in a virtual environment"""
+    return hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)
+
+def check_conda_env_exists(env_name):
+    """Check if a conda environment exists"""
+    success, output = run_command("conda env list", shell=True)
+    if success:
+        return env_name in output
+    return False
+
+def check_python_version_in_conda_env(env_name, version):
+    """Check Python version in a conda environment"""
+    success, output = run_command(f"conda run -n {env_name} python --version", shell=True)
+    if success:
+        return version in output
+    return False
 
 def install_conda():
     """Install Miniforge (conda) if not present"""
@@ -114,12 +133,33 @@ def install_conda():
 
 def install_python_3_12_8(conda_path):
     """Install Python 3.12.8 using conda"""
+    env_name = "py3128"
+    
+    # Check if environment already exists
+    if check_conda_env_exists(env_name):
+        print_color(f"Conda environment '{env_name}' already exists", "blue")
+        
+        # Check if it has Python 3.12.8
+        if check_python_version_in_conda_env(env_name, "3.12.8"):
+            print_color(f"Python 3.12.8 is already installed in conda environment '{env_name}'", "green")
+            return env_name
+        else:
+            print_color(f"Environment '{env_name}' exists but doesn't have Python 3.12.8", "yellow")
+            # Ask user if they want to update or recreate
+            while True:
+                choice = input(f"Update environment '{env_name}' to Python 3.12.8? (y/n): ").lower().strip()
+                if choice in ["y", "yes"]:
+                    break
+                elif choice in ["n", "no"]:
+                    print_color(f"Skipping Python 3.12.8 installation", "yellow")
+                    return env_name
+                print_color("Please enter 'y' or 'n'", "yellow")
+    
     print_color("Installing Python 3.12.8 using conda...", "blue")
     
     conda_bin = os.path.join(conda_path, "bin", "conda") if conda_path else "conda"
     
     # Create a new environment with Python 3.12.8
-    env_name = "py3128"
     success, _ = run_command(f"{conda_bin} create -n {env_name} python=3.12.8 -y", shell=True)
     if not success:
         print_color("Failed to create conda environment", "red")
@@ -131,6 +171,45 @@ def install_python_3_12_8(conda_path):
 def setup_virtualenv(conda_path, env_name):
     """Set up a virtual environment for the project"""
     print_color("Setting up virtual environment...", "blue")
+    
+    # Check if we're already in a virtual environment
+    if is_in_virtualenv():
+        print_color("Already running in a virtual environment", "yellow")
+        
+        # Verify Python version in this venv
+        version = platform.python_version()
+        if version.startswith("3.12."):
+            print_color(f"Current virtual environment has Python {version}", "green")
+            print_color("Using current virtual environment", "green")
+            return True
+        else:
+            print_color(f"Current virtual environment has Python {version}, not 3.12.x", "red")
+            print_color("Please deactivate the current virtual environment and try again", "red")
+            return False
+    
+    # Check if virtual environment already exists
+    venv_path = "venv"
+    if os.path.exists(venv_path):
+        # Check if the venv has the right Python version
+        venv_python = os.path.join(venv_path, "bin", "python")
+        success, output = run_command(f"{venv_python} --version", shell=True)
+        if success and "3.12." in output:
+            print_color(f"Virtual environment already exists with Python {output.strip()}", "green")
+            
+            # Ask if user wants to recreate it
+            while True:
+                choice = input("Recreate virtual environment? (y/n): ").lower().strip()
+                if choice in ["y", "yes"]:
+                    print_color(f"Removing existing virtual environment at {venv_path}...", "yellow")
+                    shutil.rmtree(venv_path)
+                    break
+                elif choice in ["n", "no"]:
+                    print_color("Using existing virtual environment", "green")
+                    return True
+                print_color("Please enter 'y' or 'n'", "yellow")
+        else:
+            print_color(f"Existing virtual environment has wrong Python version. Recreating...", "yellow")
+            shutil.rmtree(venv_path)
     
     # Activate conda environment
     conda_bin = os.path.join(conda_path, "bin", "conda") if conda_path else "conda"
@@ -144,11 +223,6 @@ def setup_virtualenv(conda_path, env_name):
     python_path = output.strip()
     
     # Create a virtual environment
-    venv_path = "venv"
-    if os.path.exists(venv_path):
-        print_color(f"Removing existing virtual environment at {venv_path}...", "yellow")
-        shutil.rmtree(venv_path)
-    
     print_color(f"Creating virtual environment at {venv_path} using {python_path}...", "blue")
     success, _ = run_command(f"{python_path} -m venv {venv_path}", shell=True)
     if not success:
@@ -175,7 +249,22 @@ def create_terminal_assistant_script():
     
     # Create terminal-assistant.sh script
     script_path = os.path.join(script_dir, "terminal-assistant.sh")
-    print_color(f"Creating terminal-assistant.sh at {script_path}...", "blue")
+    
+    # Check if the script already exists
+    if os.path.exists(script_path):
+        print_color(f"Terminal assistant script already exists at {script_path}", "yellow")
+        
+        # Check if it needs updating (check if the path is correct)
+        with open(script_path, "r") as f:
+            content = f.read()
+        
+        if f'ASSISTANT_DIR="{script_dir}"' in content:
+            print_color("Terminal assistant script is up to date", "green")
+            return script_path
+        else:
+            print_color("Terminal assistant script needs updating", "yellow")
+    else:
+        print_color(f"Creating terminal-assistant.sh at {script_path}...", "blue")
     
     script_content = """#!/bin/bash
 # terminal-assistant.sh - One-shot command for Gemini Terminal Assistant
@@ -282,6 +371,17 @@ def install_terminal_assistant_command(script_path):
     home_dir = os.path.expanduser("~")
     bashrc_path = os.path.join(home_dir, ".bashrc")
     
+    # Check if command is already installed in /usr/local/bin
+    symlink_path = "/usr/local/bin/terminal-assistant"
+    if os.path.exists(symlink_path):
+        link_target = os.path.realpath(symlink_path)
+        if link_target == script_path:
+            print_color("✅ Terminal-assistant command already installed via symlink", "green")
+            return True
+        else:
+            print_color(f"Symlink exists but points to {link_target} instead of {script_path}", "yellow")
+            print_color("Attempting to update symlink...", "blue")
+    
     # Try to create symlink in /usr/local/bin first
     print_color("Attempting to create symlink in /usr/local/bin...", "blue")
     try:
@@ -292,36 +392,57 @@ def install_terminal_assistant_command(script_path):
     except:
         pass
     
-    # Fall back to .bashrc method if symlink creation fails
-    print_color("Adding terminal-assistant alias to .bashrc...", "blue")
-    
-    # Check if the alias already exists in .bashrc
-    with open(bashrc_path, "r") as f:
-        content = f.read()
-    
-    alias_line = f"alias terminal-assistant='{script_path}'"
-    if "alias terminal-assistant=" in content:
-        # Update existing alias
-        print_color("Updating existing terminal-assistant alias in .bashrc...", "blue")
+    # Check if alias already exists in .bashrc
+    if os.path.exists(bashrc_path):
         with open(bashrc_path, "r") as f:
-            lines = f.readlines()
+            content = f.read()
         
-        with open(bashrc_path, "w") as f:
-            for line in lines:
-                if "alias terminal-assistant=" in line:
-                    f.write(f"{alias_line}\n")
-                else:
-                    f.write(line)
-    else:
-        # Add new alias
-        print_color("Adding terminal-assistant alias to .bashrc...", "blue")
-        with open(bashrc_path, "a") as f:
-            f.write(f"\n# Terminal Assistant command\n{alias_line}\n")
+        alias_line = f"alias terminal-assistant='{script_path}'"
+        
+        # Check if the exact alias already exists
+        if alias_line in content:
+            print_color("✅ Terminal-assistant command already installed via .bashrc alias", "green")
+            return True
+        # Check if any terminal-assistant alias exists
+        elif "alias terminal-assistant=" in content:
+            print_color("Terminal-assistant alias exists but needs updating", "yellow")
+            
+            # Fall back to .bashrc method (update existing alias)
+            print_color("Updating terminal-assistant alias in .bashrc...", "blue")
+            
+            with open(bashrc_path, "r") as f:
+                lines = f.readlines()
+            
+            with open(bashrc_path, "w") as f:
+                for line in lines:
+                    if "alias terminal-assistant=" in line:
+                        f.write(f"{alias_line}\n")
+                    else:
+                        f.write(line)
+            
+            print_color("✅ Updated terminal-assistant alias in .bashrc", "green")
+            print_color("Please run 'source ~/.bashrc' or restart your terminal to apply changes", "yellow")
+            return True
+    
+    # Add new alias
+    print_color("Adding terminal-assistant alias to .bashrc...", "blue")
+    with open(bashrc_path, "a") as f:
+        f.write(f"\n# Terminal Assistant command\n{alias_line}\n")
     
     print_color("✅ Added terminal-assistant command to .bashrc", "green")
     print_color("Please run 'source ~/.bashrc' or restart your terminal to use the command", "yellow")
     
     return True
+
+def get_user_confirmation(prompt):
+    """Get user confirmation (y/n)"""
+    while True:
+        response = input(f"{prompt} (y/n): ").lower().strip()
+        if response in ["y", "yes"]:
+            return True
+        elif response in ["n", "no"]:
+            return False
+        print_color("Please enter 'y' or 'n'", "yellow")
 
 def main():
     """Main setup function"""
@@ -335,6 +456,53 @@ def main():
     
     # Check Python version
     check_python_version()
+    
+    # Check if already in a virtual environment
+    if is_in_virtualenv():
+        print_color("Running in a virtual environment", "yellow")
+        print_color("Your current Python version is: " + platform.python_version(), "blue")
+        
+        if not platform.python_version().startswith("3.12."):
+            print_color("Warning: Current virtual environment does not have Python 3.12.x", "red")
+            print_color("It is recommended to deactivate this virtual environment first.", "red")
+            if not get_user_confirmation("Continue anyway?"):
+                print_color("Setup cancelled", "yellow")
+                sys.exit(0)
+        else:
+            print_color("Your virtual environment is using Python 3.12.x, which is suitable.", "green")
+            
+            # Skip conda setup
+            conda_path = None
+            env_name = None
+            
+            # Create and install terminal-assistant command
+            script_path = create_terminal_assistant_script()
+            if script_path:
+                install_terminal_assistant_command(script_path)
+            
+            # Check if requirements are installed
+            print_color("Checking if requirements are installed...", "blue")
+            success, _ = run_command("pip list")
+            if success:
+                print_color("✅ Dependencies installed", "green")
+            else:
+                print_color("Installing dependencies...", "blue")
+                success, _ = run_command("pip install --prefer-binary -r requirements.txt", shell=True)
+                if success:
+                    print_color("✅ Dependencies installed successfully", "green")
+                else:
+                    print_color("❌ Failed to install dependencies", "red")
+            
+            print_color("\nSetup completed!", "green")
+            print_color("\nTo run Gemini Terminal Assistant:", "cyan")
+            print_color("1. Create a .env file with your Google API key:", "cyan")
+            print_color("   echo 'GOOGLE_API_KEY=your_key_here' > .env", "yellow")
+            print_color("2. Run the assistant:", "cyan")
+            print_color("   python run_agent.py", "yellow")
+            print_color("\nOr use the command-line wrapper from anywhere:", "cyan")
+            print_color("   terminal-assistant \"your task here\"", "yellow")
+            
+            return 0
     
     # Check for conda
     if check_conda():

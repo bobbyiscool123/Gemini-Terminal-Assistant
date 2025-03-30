@@ -57,6 +57,24 @@ Run the provided setup script to automatically install Conda, Python 3.12.8, and
 python setup.py
 ```
 
+The setup script is smart enough to detect existing installations and will:
+- Use your current virtual environment if it has Python 3.12.x
+- Detect existing conda environments with Python 3.12.8
+- Avoid reinstalling components that are already set up
+
+#### Uninstalling
+
+To uninstall the Gemini Terminal Assistant:
+
+```bash
+python uninstall.py
+```
+
+This will:
+- Remove the terminal-assistant command from your system
+- Optionally remove the virtual environment
+- Optionally remove the conda environment
+
 #### Manual Setup with Conda
 
 1. Install Miniforge (Conda for ARM64):

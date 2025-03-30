@@ -109,6 +109,27 @@ Or start the terminal assistant directly:
 python agent_terminal.py
 ```
 
+### Using the Command-line Wrapper
+
+You can also use the Gemini Terminal Assistant as a command directly from your terminal:
+
+```bash
+terminal-assistant "your task here"
+```
+
+This allows you to:
+- Run a single task without keeping the assistant open
+- Execute tasks from any directory
+- Integrate the assistant with other shell scripts and workflows
+
+To install the command-line wrapper:
+
+```bash
+bash install-command.sh
+```
+
+The wrapper will be available from anywhere in your system after you source your `.bashrc` file or restart your terminal.
+
 ### Basic Commands
 
 | Command | Description |

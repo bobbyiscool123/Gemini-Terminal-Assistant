@@ -22,44 +22,49 @@
 - **📦 Package Manager Integration** - Automatically installs Chocolatey (Windows) when needed for installing software
 - **🏃 Auto-Run Mode** - Executes tasks automatically without requiring confirmation for each step
 - **❓ Intelligent Questioning** - Asks clarifying questions only when necessary for task completion
-- **🚀 Portable Usage** - Run from anywhere with the portable batch file setup
+- **🚀 Portable Usage** - Run from anywhere with PATH integration
 
 ## 📋 Requirements
 
 - Python 3.8 or higher
 - Google API key for Gemini AI
 - Internet connection for AI operations
-- Windows operating system (for portable/global setup)
+- Windows operating system (primary support, Linux/macOS supported with limitations)
 
 ## 🚀 Installation
 
-### Option 1: Quick Setup (Recommended)
+### Option 1: Standard Setup
 
-Run the `setup_global.bat` file to automatically:
-1. Create a virtual environment
-2. Install all dependencies
-3. Make the assistant accessible from anywhere in your system
-
-```bash
-setup_global.bat
-```
-
-### Option 2: Manual Setup
-
-#### 1. Clone the repository
-
-```bash
-git clone https://github.com/yourusername/ai-terminal-assistant.git
-cd ai-terminal-assistant
-```
-
-#### 2. Run the setup script
+1. Clone the repository or download and extract the source code
+2. Run the setup script:
 
 ```bash
 python setup.py
 ```
 
-#### 3. Configure API access
+This will automatically:
+- Check and install required dependencies
+- Set up the configuration files
+- Create a virtual environment (if requested)
+- Guide you through API key setup
+
+### Option 2: Global Installation (Windows)
+
+To make the assistant accessible from anywhere in your system:
+
+1. Run the setup script first to ensure all dependencies are installed
+2. Run the PATH integration script as administrator:
+
+```bash
+add-to-path.bat
+```
+
+This will:
+- Add the assistant's installation directory to your system PATH
+- Allow you to run the assistant from any command prompt or terminal
+- Enable direct command execution from anywhere
+
+### Environment Configuration
 
 Create a `.env` file in the project root with your Google API key:
 
@@ -69,32 +74,35 @@ GOOGLE_API_KEY=your_api_key_here
 
 You can obtain a Gemini API key from [Google AI Studio](https://ai.google.dev/).
 
-#### 4. (Optional) Make globally accessible
-
-To make the assistant accessible from anywhere:
-
-```bash
-python launcher.py
-```
-
 ## 🎮 Usage
 
 ### Running the Assistant
 
-#### Option 1: Run from anywhere (after global setup)
+#### Interactive Mode
 
-Open any terminal or command prompt and type:
+After setting up the PATH (Option 2 above), you can run from any terminal:
 
 ```bash
 terminal-assistant
 ```
 
-#### Option 2: Run directly from the project folder
-
-Double-click on `terminal-assistant.bat` or run:
+Or directly from the installation directory:
 
 ```bash
 terminal-assistant.bat
+```
+
+#### Direct Command Execution
+
+Run a specific task without entering interactive mode:
+
+```bash
+terminal-assistant "your task description here"
+```
+
+Example:
+```bash
+terminal-assistant "check if python is installed"
 ```
 
 ### Basic Commands
@@ -111,16 +119,14 @@ terminal-assistant.bat
 | `pwd` | Show current directory |
 | `auto on/off` | Enable/disable auto-run mode |
 
-### Using the Assistant
+### Conversational Interface
 
-Simply describe what you want to do in natural language. The assistant will:
+The assistant can handle both:
 
-1. Analyze your request and create a structured execution plan
-2. Break down the task into logical subtasks
-3. Show you the plan and begin execution
-4. Execute each subtask with appropriate commands
-5. Handle any errors and provide recovery options
-6. Complete the task and show you the results
+1. **Task-based queries** - Commands to execute specific operations
+2. **Conversational queries** - Natural language questions and conversation
+
+The assistant automatically detects the type of input and responds appropriately, using the Gemini AI to generate natural responses for conversational interactions.
 
 ### Example Tasks
 
@@ -135,17 +141,24 @@ Simply describe what you want to do in natural language. The assistant will:
 "Find duplicate files in my pictures folder"
 ```
 
-## 🏗️ Architecture
+## 🔄 Recent Changes
 
-The assistant is built with a modular architecture:
+### Version 1.0
+- Added PATH integration for global access from any terminal
+- Implemented direct command execution mode
+- Improved error handling and keyboard interrupt management
+- Added conversational mode using Gemini AI for natural interactions
+- Enhanced the batch file for better drive handling and directory changes
+- Added silent mode for non-interactive use
+- Fixed issues with command history saving and loading
+
+## 🏗️ Project Structure
 
 - **agent_terminal.py** - Main agent implementation with task processing logic
-- **mcp_server.py** - Model Context Protocol server for system operations
-- **agent_utils.py** - Utility functions for platform detection and command validation
-- **run_agent.py** - Launcher script with dependency checking
-- **setup.py** - Setup script for creating virtual environment and installing dependencies
+- **run_agent.py** - Launcher script with dependency checking and argument processing
+- **setup.py** - Setup script for installing dependencies
 - **terminal-assistant.bat** - Batch file for running the assistant
-- **launcher.py** - Script for making the assistant globally accessible
+- **add-to-path.bat** - Script for adding the assistant to the system PATH
 
 ## ⚙️ Configuration
 
@@ -160,50 +173,34 @@ max_tokens: 8000  # Maximum tokens to use in AI requests
 # Agent Behavior
 auto_run: true  # Execute commands automatically without confirmation
 question_probability: 0.1  # Probability of asking clarifying questions (0.0-1.0)
-
-# System Integration
-enable_mcp_server: true  # Enable the Model Context Protocol server
-scan_drives_on_startup: false  # Scan system drives during initialization
 ```
 
-## 🔍 Advanced Features
+## 🛠️ Troubleshooting
 
-### File Sorting and Organization
+### Common Issues
 
-The assistant can sort and organize files by type:
+1. **"The system cannot find the drive specified"**
+   - Ensure the batch file has the correct path to your installation directory
+   - Try running the terminal-assistant.bat file directly from its location
 
-```
-"Sort my downloads folder by file type"
-```
+2. **API Key Issues**
+   - Verify your Gemini API key is correctly set in the .env file
+   - Check that the API key has not expired or reached its quota limit
 
-This will:
-1. Analyze files in the specified directory
-2. Create folders for different file types (Images, Videos, Documents, etc.)
-3. Move files to appropriate folders
-4. Clean up empty directories
+3. **Python Not Found**
+   - Ensure Python 3.8+ is installed and in your system PATH
+   - Try running `python --version` to verify Python is accessible
 
-### Software Installation
+4. **Keyboard Interrupt Not Working**
+   - If Ctrl+C doesn't terminate properly, press it multiple times
+   - As a last resort, close the terminal window and restart
 
-When installing software, the assistant will:
+### PATH Integration Issues
 
-1. Check if the program is already installed
-2. Install package managers (like Chocolatey) if needed
-3. Use appropriate commands for your operating system
-4. Verify successful installation
-
-Example:
-```
-"Install ffmpeg on my system"
-```
-
-### Model Context Protocol (MCP)
-
-The MCP server provides system information without sending unnecessary data to the AI model:
-
-- Checks for installed software and package managers
-- Gathers system drive information
-- Provides folder structure analysis
-- Manages file operations locally
+If the `add-to-path.bat` script fails:
+1. Run it as administrator
+2. Verify you have write permissions to the registry
+3. Try adding the directory manually to your PATH environment variable
 
 ## 🤝 Contributing
 

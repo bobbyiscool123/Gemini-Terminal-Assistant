@@ -283,54 +283,119 @@ class AgentTerminal:
             print("Type 'exit' to quit, 'help' for commands")
             print()
     
+    def is_conversational_query(self, text: str) -> bool:
+        """Check if the user input is conversational rather than a task"""
+        # Common conversational patterns
+        conversational_patterns = [
+            r'^hi\b', 
+            r'^hello\b', 
+            r'^hey\b',
+            r'how are you',
+            r'^what\'?s up',
+            r'^good morning',
+            r'^good afternoon',
+            r'^good evening',
+            r'^\?',
+            r'^who are you',
+            r'^tell me about yourself',
+            r'^what can you do'
+        ]
+        
+        # Check if any pattern matches
+        text_lower = text.lower()
+        if any(re.search(pattern, text_lower) for pattern in conversational_patterns):
+            return True
+            
+        # If it's very short (1-3 words) and doesn't contain command-like terms
+        word_count = len(text_lower.split())
+        if word_count <= 3 and not any(cmd in text_lower for cmd in ['install', 'create', 'delete', 'find', 'run', 'show', 'list', 'make', 'exec']):
+            return True
+            
+        return False
+        
+    def handle_conversation(self, user_input: str):
+        """Handle conversational queries directly using the AI model"""
+        print(f"{Fore.CYAN}Processing your message...{Style.RESET_ALL}")
+        
+        prompt = f"""
+# CONVERSATIONAL RESPONSE
+
+You are an AI terminal assistant that helps users with computer tasks.
+The user has sent a conversational message rather than a task request.
+Respond naturally and conversationally to the user's input.
+
+User message: {user_input}
+
+Remember:
+- Keep your response friendly and concise
+- Ask if they'd like help with a specific terminal task if appropriate
+- Don't provide any commands unless specifically requested
+"""
+        try:
+            response = MODEL.generate_content(prompt)
+            text = response.text.strip()
+            print(f"\n{text}\n")
+            return True
+        except Exception as e:
+            print(f"{Fore.RED}Error generating conversational response: {str(e)}{Style.RESET_ALL}")
+            print("Hello! How can I help you with your terminal tasks today?")
+            return True
+            
     def process_user_input(self, user_input):
         """Process a single user input and execute it"""
-        if user_input.strip().lower() == 'exit':
+        user_input = user_input.strip()
+            
+        if user_input.lower() == 'exit':
             self.save_history()
             return False
             
-        if user_input.strip().lower() == 'help':
+        if user_input.lower() == 'help':
             self.show_help()
             return True
             
-        if user_input.strip().lower() == 'history':
+        if user_input.lower() == 'history':
             self.display_command_history()
             return True
             
-        if user_input.strip().lower() == 'tasks':
+        if user_input.lower() == 'tasks':
             self.display_task_status()
             return True
             
-        if user_input.strip().lower() == 'context':
+        if user_input.lower() == 'context':
             self.display_context()
             return True
             
-        if user_input.strip().lower() == 'auto on':
+        if user_input.lower() == 'auto on':
             self.auto_run = True
             print("Auto-run mode enabled")
             return True
             
-        if user_input.strip().lower() == 'auto off':
+        if user_input.lower() == 'auto off':
             self.auto_run = False
             print("Auto-run mode disabled")
             return True
             
-        if user_input.strip().lower() == 'clear':
+        if user_input.lower() == 'clear':
             os.system('cls' if platform.system() == 'Windows' else 'clear')
             return True
             
-        if user_input.strip().lower().startswith('cd '):
-            path = user_input.strip()[3:].strip()
+        if user_input.lower().startswith('cd '):
+            path = user_input[3:].strip()
             self.change_directory(path)
             return True
             
-        if user_input.strip().lower() == 'pwd':
+        if user_input.lower() == 'pwd':
             print(os.getcwd())
             return True
             
+        # Check if this is a conversational query rather than a task
+        if self.is_conversational_query(user_input):
+            return self.handle_conversation(user_input)
+            
         # Add to command history
         self.command_history.append(user_input)
-        self.save_history()
+        if not self.silent_init:
+            self.save_history()
         
         # Process the task
         self.process_user_task(user_input)
@@ -379,12 +444,15 @@ class AgentTerminal:
             if os.path.exists(self.config["history_file"]):
                 with open(self.config["history_file"], 'r') as f:
                     self.command_history = json.load(f)
-                print(f"Loaded {len(self.command_history)} command(s) from history.")
+                if not self.silent_init:
+                    print(f"Loaded {len(self.command_history)} command(s) from history.")
             else:
-                print(f"History file {self.config['history_file']} not found. Creating empty history.")
+                if not self.silent_init:
+                    print(f"History file {self.config['history_file']} not found. Creating empty history.")
                 self.command_history = []
         except Exception as e:
-            print(f"Error loading history: {str(e)}")
+            if not self.silent_init:
+                print(f"Error loading history: {str(e)}")
             self.command_history = []
             
     def save_history(self):
@@ -392,9 +460,11 @@ class AgentTerminal:
         try:
             with open(self.config["history_file"], 'w') as f:
                 json.dump(self.command_history, f, indent=2)
-            print("History saved successfully.")
+            if not self.silent_init:
+                print("History saved successfully.")
         except Exception as e:
-            print(f"Error saving history: {str(e)}")
+            if not self.silent_init:
+                print(f"Error saving history: {str(e)}")
     
     def get_system_drive_info(self) -> Dict:
         """Get information about system drives and common installation directories"""
@@ -474,30 +544,53 @@ Return a JSON object with this structure:
 }}
 """
         try:
-            response = MODEL.generate_content(prompt)
-            text = response.text.strip()
+            # Default values in case the API call fails
+            default_success = result.get('exit_code', 1) == 0
+            default_state = "Command executed, but verification unavailable."
+            default_action = {"action": "continue" if default_success else "skip", 
+                              "reason": "API verification unavailable, decision based on exit code"}
+            default_diagnostics = {"is_installed": None, "error_type": None, "suggested_fix": None}
             
-            # Extract JSON from response
-            match = re.search(r'```json\s*({.*?})\s*```', text, re.DOTALL)
-            if match:
-                json_str = match.group(1)
-            else:
-                match = re.search(r'({.*})', text, re.DOTALL)
+            # Try to call the Gemini API with a timeout
+            try:
+                response = MODEL.generate_content(prompt)
+                text = response.text.strip()
+                
+                # Extract JSON from response
+                match = re.search(r'```json\s*({.*?})\s*```', text, re.DOTALL)
                 if match:
                     json_str = match.group(1)
                 else:
-                    json_str = text
+                    match = re.search(r'({.*})', text, re.DOTALL)
+                    if match:
+                        json_str = match.group(1)
+                    else:
+                        json_str = text
+                
+                verification = json.loads(json_str)
+                return (
+                    verification.get("success", False),
+                    verification.get("system_state", ""),
+                    verification.get("next_action", {}),
+                    verification.get("diagnostics", {})
+                )
             
-            verification = json.loads(json_str)
-            return (
-                verification.get("success", False),
-                verification.get("system_state", ""),
-                verification.get("next_action", {}),
-                verification.get("diagnostics", {})
-            )
+            except KeyboardInterrupt:
+                print(f"{Fore.YELLOW}\nVerification interrupted. Proceeding with basic verification.{Style.RESET_ALL}")
+                return default_success, default_state, default_action, default_diagnostics
+                
+            except Exception as e:
+                print(f"{Fore.YELLOW}API verification failed: {str(e)}. Using basic verification.{Style.RESET_ALL}")
+                return default_success, default_state, default_action, default_diagnostics
+                
         except Exception as e:
-            print(f"Error verifying command execution: {str(e)}")
-            return False, "", {"action": "abort", "reason": "Verification failed"}, {}
+            print(f"{Fore.RED}Error verifying command execution: {str(e)}{Style.RESET_ALL}")
+            return (
+                result.get('exit_code', 1) == 0,  # Consider success based on exit code
+                "",
+                {"action": "continue", "reason": "Verification failed"},
+                {}
+            )
 
     def get_task_planning(self, task: str) -> Dict:
         """Get AI task planning response - breaking the task into subtasks with approaches"""
@@ -627,76 +720,96 @@ Ensure commands are appropriate for the user's operating system.
 Return ONLY the raw commands, one per line, with NO explanations, backticks, or markdown.
 """
         
+        # Generate a safe default command based on the task
+        is_windows = platform.system() == "Windows"
+        default_commands = []
+        
+        # Simple command generation based on keywords in the task
+        if "file" in task_context.lower() or "list" in task_context.lower():
+            default_commands = ["dir"] if is_windows else ["ls -la"]
+        elif "process" in task_context.lower():
+            default_commands = ["tasklist"] if is_windows else ["ps aux"]
+        elif "network" in task_context.lower():
+            default_commands = ["ipconfig /all"] if is_windows else ["ifconfig"]
+        elif "system" in task_context.lower() or "info" in task_context.lower():
+            default_commands = ["systeminfo"] if is_windows else ["uname -a && cat /etc/os-release"]
+        else:
+            # Very safe fallback
+            default_commands = ["dir"] if is_windows else ["ls"]
+        
         try:
-            response = MODEL.generate_content(prompt)
-            text = response.text.strip()
-            
-            # Clean up the response to remove any markdown formatting
-            text = re.sub(r'```(?:powershell|sh|bash|cmd|bat|shell)?\n', '', text)
-            text = re.sub(r'```', '', text)
-            
-            # Split into lines and remove empty lines
-            lines = [line.strip() for line in text.split('\n') if line.strip()]
-            
-            # Additional post-processing to ensure no markdown or explanations
-            commands = []
-            for line in lines:
-                # Skip lines that look like markdown headings or bullet points
-                if line.startswith('#') or line.startswith('-') or line.startswith('*'):
-                    continue
-                # Skip lines that look like explanations
-                if ('Note:' in line or 
-                    'This command' in line or 
-                    'Use this' in line or 
-                    line.startswith('Note') or 
-                    line.startswith('For') or 
-                    line.startswith('The') or
-                    line.startswith('This') or
-                    line.startswith('To ') or
-                    line.startswith('You can')):
-                    continue
+            try:
+                response = MODEL.generate_content(prompt)
+                text = response.text.strip()
                 
-                # Remove any remaining markdown or non-command elements
-                line = re.sub(r'^[>#$] ', '', line)
+                # Clean up the response to remove any markdown formatting
+                text = re.sub(r'```(?:powershell|sh|bash|cmd|bat|shell)?\n', '', text)
+                text = re.sub(r'```', '', text)
                 
-                # Add to commands if it looks like an actual command
-                if len(line.split()) >= 1:
-                    commands.append(line)
-            
-            # Final cleanup for PowerShell commands on Windows
-            final_commands = []
-            is_windows = platform.system() == "Windows"
-            
-            for cmd in commands:
-                # Fix PowerShell commands
-                if is_windows and ('Get-' in cmd or 'Set-' in cmd or "$_" in cmd or 'Where-Object' in cmd):
-                    # If it's a PowerShell command but doesn't have the powershell -Command prefix
-                    if not cmd.startswith('powershell -Command') and not cmd.startswith('powershell.exe -Command'):
-                        if '"' in cmd:
-                            # If there are already quotes, we need to be careful with nesting
-                            cmd = f'powershell -Command "{cmd}"'
-                        else:
-                            # Simple case, just wrap in quotes
-                            cmd = f'powershell -Command "{cmd}"'
+                # Split into lines and remove empty lines
+                lines = [line.strip() for line in text.split('\n') if line.strip()]
                 
-                final_commands.append(cmd)
+                # Additional post-processing to ensure no markdown or explanations
+                commands = []
+                for line in lines:
+                    # Skip lines that look like markdown headings or bullet points
+                    if line.startswith('#') or line.startswith('-') or line.startswith('*'):
+                        continue
+                    # Skip lines that look like explanations
+                    if ('Note:' in line or 
+                        'This command' in line or 
+                        'Use this' in line or 
+                        line.startswith('Note') or 
+                        line.startswith('For') or 
+                        line.startswith('The') or
+                        line.startswith('This') or
+                        line.startswith('To ') or
+                        line.startswith('You can')):
+                        continue
+                    
+                    # Remove any remaining markdown or non-command elements
+                    line = re.sub(r'^[>#$] ', '', line)
+                    
+                    # Add to commands if it looks like an actual command
+                    if len(line.split()) >= 1:
+                        commands.append(line)
                 
-            if final_commands:
-                return final_commands
-            else:
-                # Fallback if we couldn't extract commands
-                print(f"{Fore.RED}Warning: No valid commands could be extracted from AI response{Style.RESET_ALL}")
-                if is_windows:
-                    return ["dir"]
+                # Final cleanup for PowerShell commands on Windows
+                final_commands = []
+                
+                for cmd in commands:
+                    # Fix PowerShell commands
+                    if is_windows and ('Get-' in cmd or 'Set-' in cmd or "$_" in cmd or 'Where-Object' in cmd):
+                        # If it's a PowerShell command but doesn't have the powershell -Command prefix
+                        if not cmd.startswith('powershell -Command') and not cmd.startswith('powershell.exe -Command'):
+                            if '"' in cmd:
+                                # If there are already quotes, we need to be careful with nesting
+                                cmd = f'powershell -Command "{cmd}"'
+                            else:
+                                # Simple case, just wrap in quotes
+                                cmd = f'powershell -Command "{cmd}"'
+                    
+                    final_commands.append(cmd)
+                    
+                if final_commands:
+                    return final_commands
                 else:
-                    return ["ls"]
+                    # Fallback if we couldn't extract commands
+                    print(f"{Fore.YELLOW}No valid commands could be extracted from AI response. Using default commands.{Style.RESET_ALL}")
+                    return default_commands
+                    
+            except KeyboardInterrupt:
+                print(f"{Fore.YELLOW}\nCommand generation interrupted. Using default commands.{Style.RESET_ALL}")
+                return default_commands
+                
+            except Exception as e:
+                print(f"{Fore.YELLOW}API command generation failed: {str(e)}. Using default commands.{Style.RESET_ALL}")
+                return default_commands
+                
         except Exception as e:
-            print(f"Error generating commands: {str(e)}")
+            print(f"{Fore.RED}Error generating commands: {str(e)}{Style.RESET_ALL}")
             # Return a safe fallback command
-            if platform.system() == "Windows":
-                return ["dir"]
-            else:
-                return ["ls"]
+            return default_commands
     
     def execute_command(self, command: str) -> Dict:
         """Execute a command and return its result"""
@@ -743,35 +856,71 @@ Return ONLY the raw commands, one per line, with NO explanations, backticks, or 
             stdout_lines = []
             stderr_lines = []
             
-            # Read stdout and stderr in real-time
+            # Set a timeout value for each readline operation
+            import select
+            
+            # Read stdout and stderr in real-time with timeout support
             while True:
-                stdout_line = process.stdout.readline()
-                stderr_line = process.stderr.readline()
-                
-                if stdout_line:
-                    stdout_line = stdout_line.rstrip()
-                    print(stdout_line)
-                    stdout_lines.append(stdout_line)
-                
-                if stderr_line:
-                    stderr_line = stderr_line.rstrip()
-                    print(f"{Fore.RED}{stderr_line}{Style.RESET_ALL}")
-                    stderr_lines.append(stderr_line)
-                
-                # Check if process has completed
-                if process.poll() is not None and not stdout_line and not stderr_line:
+                try:
+                    # Check if the process has already exited
+                    if process.poll() is not None:
+                        break
+                    
+                    # Use select to wait for output with a timeout
+                    readable, _, _ = select.select([process.stdout, process.stderr], [], [], 0.1)
+                    
+                    for stream in readable:
+                        if stream == process.stdout:
+                            stdout_line = process.stdout.readline()
+                            if stdout_line:
+                                stdout_line = stdout_line.rstrip()
+                                print(stdout_line)
+                                stdout_lines.append(stdout_line)
+                        elif stream == process.stderr:
+                            stderr_line = process.stderr.readline()
+                            if stderr_line:
+                                stderr_line = stderr_line.rstrip()
+                                print(f"{Fore.RED}{stderr_line}{Style.RESET_ALL}")
+                                stderr_lines.append(stderr_line)
+                    
+                except KeyboardInterrupt:
+                    print(f"{Fore.YELLOW}\nCommand interrupted by user. Terminating...{Style.RESET_ALL}")
+                    try:
+                        process.terminate()
+                        # Give it a chance to terminate gracefully
+                        process.wait(timeout=2)
+                    except:
+                        # If it doesn't terminate in time, kill it
+                        process.kill()
+                    
+                    return {
+                        "command": command,
+                        "stdout": '\n'.join(stdout_lines),
+                        "stderr": '\n'.join(stderr_lines) + "\nCommand interrupted by user",
+                        "exit_code": 130,  # Standard exit code for SIGINT
+                        "execution_time": time.time() - start_time,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                except Exception as e:
+                    print(f"{Fore.RED}Error reading command output: {str(e)}{Style.RESET_ALL}")
                     break
             
             # Get any remaining output
-            remaining_stdout, remaining_stderr = process.communicate()
-            
-            if remaining_stdout:
-                print(remaining_stdout.rstrip())
-                stdout_lines.extend(remaining_stdout.rstrip().split('\n'))
-            
-            if remaining_stderr:
-                print(f"{Fore.RED}{remaining_stderr.rstrip()}{Style.RESET_ALL}")
-                stderr_lines.extend(remaining_stderr.rstrip().split('\n'))
+            try:
+                remaining_stdout, remaining_stderr = process.communicate(timeout=5)
+                
+                if remaining_stdout:
+                    print(remaining_stdout.rstrip())
+                    stdout_lines.extend(remaining_stdout.rstrip().split('\n'))
+                
+                if remaining_stderr:
+                    print(f"{Fore.RED}{remaining_stderr.rstrip()}{Style.RESET_ALL}")
+                    stderr_lines.extend(remaining_stderr.rstrip().split('\n'))
+            except subprocess.TimeoutExpired:
+                # Process didn't complete within timeout, kill it
+                process.kill()
+                remaining_stdout, remaining_stderr = process.communicate()
+                stderr_lines.append("Command timed out and was terminated")
             
             exit_code = process.returncode
             execution_time = time.time() - start_time
@@ -801,6 +950,21 @@ Return ONLY the raw commands, one per line, with NO explanations, backticks, or 
             
             return result
             
+        except KeyboardInterrupt:
+            error_msg = "Command execution interrupted by user"
+            print(f"{Fore.YELLOW}{error_msg}{Style.RESET_ALL}")
+            
+            # Store error information
+            result = {
+                "command": command,
+                "stdout": "",
+                "stderr": error_msg,
+                "exit_code": 130,  # Standard exit code for SIGINT
+                "execution_time": time.time() - start_time,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            return result
         except Exception as e:
             error_msg = f"Exception while executing command: {str(e)}"
             print(f"{Fore.RED}{error_msg}{Style.RESET_ALL}")
@@ -1077,17 +1241,45 @@ Return ONLY the question text or "NO_QUESTION_NEEDED", nothing else.
         main_task = self.context.start_task(task)
         
         # Try to ask a clarifying question if needed
-        answer = self.ask_question(task)
-        if answer:
-            # Add the Q&A to conversation history
-            self.context.add_user_message(answer)
-            
-            # Update task with the additional information
-            task = f"{task} (Clarification: {answer})"
+        try:
+            answer = self.ask_question(task)
+            if answer:
+                # Add the Q&A to conversation history
+                self.context.add_user_message(answer)
+                
+                # Update task with the additional information
+                task = f"{task} (Clarification: {answer})"
+        except Exception as e:
+            print(f"{Fore.YELLOW}Error while asking clarifying question: {str(e)}{Style.RESET_ALL}")
         
         # Get task planning from AI
         print(f"{Fore.CYAN}Analyzing task and creating execution plan...{Style.RESET_ALL}")
-        task_plan = self.get_task_planning(task)
+        try:
+            task_plan = self.get_task_planning(task)
+        except Exception as e:
+            print(f"{Fore.RED}Error generating task plan: {str(e)}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Using simple execution plan instead{Style.RESET_ALL}")
+            # Create a simple fallback plan
+            task_plan = {
+                "task_summary": task,
+                "subtasks": [
+                    {
+                        "description": "Execute task directly",
+                        "approach": "Direct execution",
+                        "commands": [],
+                        "rationale": "Simple direct execution",
+                        "potential_issues": "May not be optimal",
+                        "required_resources": [],
+                        "fallback_commands": []
+                    }
+                ],
+                "estimated_steps": 1,
+                "system_requirements": {
+                    "disk_space": "unknown",
+                    "memory": "unknown",
+                    "dependencies": []
+                }
+            }
         
         # Display the plan to the user
         print(f"\n{Fore.GREEN}TASK PLAN: {task_plan['task_summary']}{Style.RESET_ALL}")
@@ -1293,7 +1485,7 @@ Return ONLY the question text or "NO_QUESTION_NEEDED", nothing else.
                 print(f"{Fore.GREEN}Subtask completed successfully{Style.RESET_ALL}")
                 
                 # Check if this was a verification task and if the main task is now complete
-                if is_check_installation and "version" in command and result["exit_code"] == 0 and is_program_related:
+                if is_check_installation and i < len(task_plan['subtasks']) and all_success:
                     main_task_objective_achieved = True
                     main_task_result = f"Program verification complete - Program is installed"
             else:

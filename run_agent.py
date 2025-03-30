@@ -46,6 +46,19 @@ def main():
     if not execute_mode:
         print("Starting Agent Terminal Assistant...")
     
+    # Special handling for help/version only - everything else goes to the AI
+    if execute_mode:
+        command = args.execute.strip().lower()
+        
+        # Only handle special commands like version and help
+        if command in ["--version", "version", "-v"]:
+            print("AI Terminal Assistant v1.0")
+            return 0
+        elif command in ["--help", "-h"]:
+            print("Usage: terminal-assistant [command]")
+            print("Run without arguments for interactive mode")
+            return 0
+    
     # Check if dependencies are installed
     if not check_dependencies():
         return 1
@@ -60,14 +73,22 @@ def main():
         
         if execute_mode:
             # Run in command execution mode
-            agent = AgentTerminal(auto_run=True, silent_init=True)
-            agent.process_user_input(args.execute)
-            return 0
+            try:
+                agent = AgentTerminal(auto_run=True, silent_init=True)
+                agent.process_user_input(args.execute)
+                return 0
+            except KeyboardInterrupt:
+                print("\nOperation cancelled by user.")
+                return 130  # Standard exit code for SIGINT
         else:
             # Run in interactive mode
-            agent = AgentTerminal()
-            agent.run()
-            return 0
+            try:
+                agent = AgentTerminal()
+                agent.run()
+                return 0
+            except KeyboardInterrupt:
+                print("\nExiting by user request.")
+                return 130
     except Exception as e:
         print(f"Error launching Agent Terminal: {str(e)}")
         import traceback

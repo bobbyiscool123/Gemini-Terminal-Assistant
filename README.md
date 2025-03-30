@@ -122,13 +122,17 @@ This allows you to:
 - Execute tasks from any directory
 - Integrate the assistant with other shell scripts and workflows
 
-To install the command-line wrapper:
+The command-line wrapper is automatically installed when you run the setup script:
 
 ```bash
-bash install-command.sh
+python setup.py
 ```
 
-The wrapper will be available from anywhere in your system after you source your `.bashrc` file or restart your terminal.
+The wrapper will be available from anywhere in your system after you source your `.bashrc` file or restart your terminal:
+
+```bash
+source ~/.bashrc
+```
 
 ### Basic Commands
 

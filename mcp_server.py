@@ -2,18 +2,15 @@
 """
 Model Context Protocol (MCP) Server
 Handles system operations and queries for the AI agent
+Modified for Linux/Termux/PRoot-distro environments
 """
 import os
 import json
 import platform
 import subprocess
+import shutil
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
-import win32api
-import win32con
-import win32file
-import win32security
-import win32com.client
 from pathlib import Path
 
 class MCPServer:
@@ -39,70 +36,73 @@ class MCPServer:
     def _check_package_managers(self) -> Dict:
         """Check for installed package managers"""
         managers = {
-            "chocolatey": False,
-            "winget": False,
-            "scoop": False
+            "apt": False,
+            "pip": False,
+            "conda": False
         }
         
-        # Check Chocolatey
+        # Check apt
         try:
-            subprocess.run(["choco", "-v"], capture_output=True, check=True)
-            managers["chocolatey"] = True
+            subprocess.run(["apt", "--version"], capture_output=True, check=True)
+            managers["apt"] = True
         except:
             pass
             
-        # Check Winget
+        # Check pip
         try:
-            subprocess.run(["winget", "--version"], capture_output=True, check=True)
-            managers["winget"] = True
+            subprocess.run(["pip", "--version"], capture_output=True, check=True)
+            managers["pip"] = True
         except:
             pass
             
-        # Check Scoop
+        # Check conda
         try:
-            subprocess.run(["scoop", "--version"], capture_output=True, check=True)
-            managers["scoop"] = True
+            subprocess.run(["conda", "--version"], capture_output=True, check=True)
+            managers["conda"] = True
         except:
             pass
             
         return managers
     
     def _get_drive_info(self) -> Dict:
-        """Get information about system drives"""
+        """Get information about file systems"""
         drive_info = {}
         try:
-            drives = win32api.GetLogicalDriveStrings().split('\000')[:-1]
-            for drive in drives:
-                try:
-                    drive_info[drive] = {
-                        "type": "fixed" if drive.startswith("C:") else "removable",
-                        "free_space": win32api.GetDiskFreeSpace(drive)[0] * win32api.GetDiskFreeSpace(drive)[1] * win32api.GetDiskFreeSpace(drive)[2],
-                        "total_space": win32api.GetDiskFreeSpace(drive)[0] * win32api.GetDiskFreeSpace(drive)[1] * win32api.GetDiskFreeSpace(drive)[3]
+            # Get mounted filesystems
+            result = subprocess.run(["df", "-h"], capture_output=True, text=True, check=True)
+            lines = result.stdout.strip().split("\n")[1:]  # Skip header
+            
+            for line in lines:
+                parts = line.split()
+                if len(parts) >= 6:  # Filesystem, Size, Used, Avail, Use%, Mounted on
+                    mount_point = parts[5]
+                    drive_info[mount_point] = {
+                        "type": "filesystem",
+                        "device": parts[0],
+                        "total_space": parts[1],
+                        "used_space": parts[2],
+                        "free_space": parts[3],
+                        "use_percent": parts[4]
                     }
-                except:
-                    drive_info[drive] = {"type": "available"}
         except:
-            # Fallback to basic drive detection
-            import string
-            for letter in string.ascii_uppercase:
-                drive = f"{letter}:\\"
-                if os.path.exists(drive):
-                    drive_info[drive] = {"type": "available"}
+            # Fallback to basic detection
+            drive_info["/"] = {"type": "filesystem"}
+            
         return drive_info
     
     def _get_common_dirs(self) -> Dict:
         """Get common system directories"""
+        home = os.path.expanduser("~")
         return {
-            "Program Files": os.path.join(os.environ.get("ProgramFiles", "C:\\Program Files")),
-            "Program Files (x86)": os.path.join(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")),
-            "AppData": os.path.join(os.environ.get("APPDATA", os.path.expanduser("~\\AppData\\Roaming"))),
-            "Local AppData": os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local"))),
-            "Downloads": os.path.join(os.path.expanduser("~"), "Downloads"),
-            "Desktop": os.path.join(os.path.expanduser("~"), "Desktop"),
-            "Documents": os.path.join(os.path.expanduser("~"), "Documents"),
-            "Pictures": os.path.join(os.path.expanduser("~"), "Pictures"),
-            "Videos": os.path.join(os.path.expanduser("~"), "Videos"),
-            "Music": os.path.join(os.path.expanduser("~"), "Music")
+            "Home": home,
+            "Downloads": os.path.join(home, "Downloads"),
+            "Desktop": os.path.join(home, "Desktop"),
+            "Documents": os.path.join(home, "Documents"),
+            "Pictures": os.path.join(home, "Pictures"),
+            "Videos": os.path.join(home, "Videos"),
+            "Music": os.path.join(home, "Music"),
+            "Applications": "/usr/bin",
+            "System": "/etc"
         }
     
     def get_folder_structure(self, path: str, max_depth: int = 3) -> Dict:
@@ -216,7 +216,7 @@ class MCPServer:
     def move_file(self, source: str, destination: str) -> bool:
         """Move a file to a new location"""
         try:
-            os.rename(source, destination)
+            shutil.move(source, destination)
             return True
         except Exception as e:
             print(f"Error moving file {source}: {str(e)}")
@@ -241,55 +241,71 @@ class MCPServer:
     
     def install_package_manager(self, manager: str) -> bool:
         """Install a package manager if not present"""
-        if manager == "chocolatey":
+        if manager == "pip":
             try:
-                # Download and run Chocolatey installation script
-                script = "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))"
-                subprocess.run(["powershell", "-Command", script], check=True)
+                subprocess.run(["apt", "install", "-y", "python3-pip"], check=True)
                 return True
             except Exception as e:
-                print(f"Error installing Chocolatey: {str(e)}")
+                print(f"Error installing pip: {str(e)}")
                 return False
-        return False
+        elif manager == "conda":
+            try:
+                # Download and install miniconda
+                subprocess.run(["wget", "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh", "-O", "/tmp/miniconda.sh"], check=True)
+                subprocess.run(["bash", "/tmp/miniconda.sh", "-b", "-p", "$HOME/miniconda"], check=True)
+                return True
+            except Exception as e:
+                print(f"Error installing conda: {str(e)}")
+                return False
+        else:
+            print(f"Package manager '{manager}' not supported for installation")
+            return False
     
     def get_package_info(self, package_name: str) -> Dict:
-        """Get information about a package"""
+        """Get information about an installed package"""
         info = {
-            "is_installed": False,
+            "name": package_name,
+            "installed": False,
             "version": None,
-            "location": None,
-            "type": None
+            "install_location": None,
+            "description": None
         }
         
-        # Check if package is installed via Chocolatey
-        if self.package_managers["chocolatey"]:
+        # Check pip package
+        try:
+            result = subprocess.run(["pip", "show", package_name], capture_output=True, text=True)
+            if result.returncode == 0:
+                info["installed"] = True
+                for line in result.stdout.split("\n"):
+                    if line.startswith("Version:"):
+                        info["version"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("Location:"):
+                        info["install_location"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("Summary:"):
+                        info["description"] = line.split(":", 1)[1].strip()
+        except:
+            pass
+        
+        # Check apt package
+        if not info["installed"]:
             try:
-                result = subprocess.run(["choco", "list", package_name, "--local"], capture_output=True, text=True)
-                if package_name.lower() in result.stdout.lower():
-                    info["is_installed"] = True
-                    info["type"] = "chocolatey"
-                    # Extract version if available
-                    version_match = re.search(rf"{package_name}\s+(\d+\.\d+\.\d+)", result.stdout)
-                    if version_match:
-                        info["version"] = version_match.group(1)
-            except:
-                pass
-                
-        # Check if package is installed via Winget
-        if self.package_managers["winget"]:
-            try:
-                result = subprocess.run(["winget", "list", package_name], capture_output=True, text=True)
-                if package_name.lower() in result.stdout.lower():
-                    info["is_installed"] = True
-                    info["type"] = "winget"
-                    # Extract version if available
-                    version_match = re.search(rf"{package_name}\s+(\d+\.\d+\.\d+)", result.stdout)
-                    if version_match:
-                        info["version"] = version_match.group(1)
+                result = subprocess.run(["apt", "show", package_name], capture_output=True, text=True)
+                if result.returncode == 0:
+                    info["installed"] = True
+                    for line in result.stdout.split("\n"):
+                        if line.startswith("Version:"):
+                            info["version"] = line.split(":", 1)[1].strip()
+                        elif line.startswith("Description:"):
+                            info["description"] = line.split(":", 1)[1].strip()
             except:
                 pass
                 
         return info
 
-# Create a singleton instance
-mcp = MCPServer() 
+# Create global instance
+mcp = MCPServer()
+
+if __name__ == "__main__":
+    # Example usage
+    print(json.dumps(mcp.system_info, indent=2))
+    print(json.dumps(mcp.package_managers, indent=2)) 

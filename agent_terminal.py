@@ -1597,6 +1597,8 @@ class TerminalAgent(AgentTerminal):
                         break
                 except Exception as e:
                     print(f"{Fore.YELLOW}Error evaluating task completion: {str(e)}{Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.YELLOW}Error evaluating task completion with model: {str(e)}{Style.RESET_ALL}")
         
         # Complete the main task
         if main_task_objective_achieved:

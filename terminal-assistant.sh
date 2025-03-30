@@ -14,7 +14,7 @@ CURRENT_DIR=$(pwd)
 
 # Path to the Gemini Terminal Assistant installation
 # This should be changed to match your actual installation path
-ASSISTANT_DIR="$HOME/Desktop/Gemini-Terminal-Assistant"
+ASSISTANT_DIR="/root/Desktop/Gemini-Terminal-Assistant"
 
 # Construct the task from all arguments
 TASK="$*"
@@ -73,9 +73,9 @@ except ImportError as e:
 async def run_one_shot():
     agent = TerminalAgent(initial_directory=os.environ.get('CURRENT_WORKING_DIR'))
     await agent.initialize()
-    print('\\n🤖 Terminal Assistant: Working on your task...\\n')
+    print('\n🤖 Terminal Assistant: Working on your task...\n')
     result = await agent.process_task('$TASK', one_shot=True)
-    print('\\n✅ Task completed:\\n', result)
+    print('\n✅ Task completed:\n', result)
     await agent.cleanup()
 
 # Run in one-shot mode
@@ -84,4 +84,4 @@ if __name__ == '__main__':
 "
 
 # Return to the original directory
-cd "$CURRENT_DIR" 
+cd "$CURRENT_DIR"

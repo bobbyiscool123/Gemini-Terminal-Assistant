@@ -1386,6 +1386,298 @@ Return a JSON object with this structure:
         self.save_history()
         print(f"{Fore.GREEN}Thank you for using Agent Terminal Assistant!{Style.RESET_ALL}")
 
+class TerminalAgent(AgentTerminal):
+    """Modern implementation with async support and one-shot mode"""
+    
+    def __init__(self, initial_directory=None):
+        """Initialize with optional initial directory"""
+        super().__init__()
+        if initial_directory:
+            self.change_directory(initial_directory)
+    
+    async def initialize(self):
+        """Async initialization for one-shot mode"""
+        # No need to load history for one-shot mode
+        # Just load config
+        self.config = self.load_config()
+        print(f"{Fore.CYAN}Terminal Assistant initialized in: {self.context.current_directory}{Style.RESET_ALL}")
+    
+    async def process_task(self, task, one_shot=False):
+        """Process a task with optional one-shot mode"""
+        # Process task
+        result = await self._process_task_async(task)
+        
+        if one_shot:
+            # In one-shot mode, return the result instead of continuing
+            return result
+        
+        return result
+    
+    async def _process_task_async(self, task):
+        """Async version of process_user_task"""
+        # Add the user message to the context
+        self.context.add_user_message(task)
+        
+        # Start a new task
+        main_task = self.context.start_task(task)
+        print(f"\n{Fore.CYAN}Processing task: {task}{Style.RESET_ALL}")
+        
+        # Plan the task
+        print(f"{Fore.YELLOW}Planning task execution...{Style.RESET_ALL}")
+        task_plan = self.get_task_planning(task)
+        
+        # Display plan
+        if task_plan.get("subtasks"):
+            print(f"\n{Fore.CYAN}Task Plan:{Style.RESET_ALL}")
+            for i, subtask in enumerate(task_plan.get("subtasks", []), 1):
+                print(f"  {i}. {subtask}")
+            print()
+        
+        # Execute each subtask
+        main_task_objective_achieved = False
+        main_task_result = ""
+        
+        for i, subtask in enumerate(task_plan.get("subtasks", []), 1):
+            if main_task_objective_achieved:
+                break
+                
+            print(f"\n{Fore.CYAN}Subtask {i}/{len(task_plan.get('subtasks', []))}: {subtask}{Style.RESET_ALL}")
+            
+            # Start a subtask
+            current_subtask = self.context.start_subtask(subtask)
+            
+            # Generate commands for this subtask
+            commands = self.get_command_generation(task, subtask)
+            
+            for cmd in commands:
+                # Check if this is a special command
+                if cmd.lower().startswith("cd "):
+                    path = cmd[3:].strip()
+                    self.change_directory(path)
+                    self.context.add_command_to_current_task({
+                        "command": cmd,
+                        "output": f"Changed directory to {self.context.current_directory}",
+                        "timestamp": datetime.now().isoformat(),
+                        "success": True
+                    })
+                    continue
+                
+                # Execute the command
+                print(f"{Fore.YELLOW}Executing: {cmd}{Style.RESET_ALL}")
+                result = self.execute_command(cmd)
+                
+                # Add the command execution to the current task history
+                self.context.add_command_to_current_task({
+                    "command": cmd, 
+                    "output": result.get("output", ""),
+                    "error": result.get("error", ""),
+                    "timestamp": datetime.now().isoformat(),
+                    "success": result.get("success", False)
+                })
+                
+                # Check if the command failed
+                if not result.get("success", False):
+                    # Try to get recovery commands
+                    print(f"{Fore.RED}Command failed: {cmd}{Style.RESET_ALL}")
+                    print(f"{Fore.RED}Error: {result.get('error', 'Unknown error')}{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}Attempting to recover...{Style.RESET_ALL}")
+                    
+                    recovery_prompt = f"""
+                    The command `{cmd}` failed with error: {result.get('error', 'Unknown error')}
+                    
+                    Current task: {task}
+                    Current subtask: {subtask}
+                    
+                    Suggest alternative commands to recover from this error.
+                    
+                    Format your response as a JSON array of command strings.
+                    """
+                    
+                    try:
+                        response = MODEL.generate_content(recovery_prompt)
+                        recovery_text = response.text
+                        
+                        # Try to parse as JSON
+                        try:
+                            # Clean the text to extract only the JSON part
+                            pattern = r"```(?:json)?(.*?)```"
+                            match = re.search(pattern, recovery_text, re.DOTALL)
+                            if match:
+                                json_str = match.group(1).strip()
+                            else:
+                                json_str = recovery_text.strip()
+                                
+                            # Remove leading/trailing [], if present
+                            if json_str.startswith('```') and json_str.endswith('```'):
+                                json_str = json_str[3:-3].strip()
+                                
+                            # Try to parse the JSON
+                            recovery_commands = json.loads(json_str)
+                            
+                            if isinstance(recovery_commands, list) and recovery_commands:
+                                print(f"{Fore.GREEN}Found recovery commands:{Style.RESET_ALL}")
+                                for i, recovery_cmd in enumerate(recovery_commands, 1):
+                                    print(f"  {i}. {recovery_cmd}")
+                                
+                                # Execute each recovery command
+                                for recovery_cmd in recovery_commands:
+                                    print(f"\n{Fore.YELLOW}Executing recovery: {recovery_cmd}{Style.RESET_ALL}")
+                                    recovery_result = self.execute_command(recovery_cmd)
+                                    
+                                    # Add the recovery command to the current task history
+                                    self.context.add_command_to_current_task({
+                                        "command": recovery_cmd,
+                                        "output": recovery_result.get("output", ""),
+                                        "error": recovery_result.get("error", ""),
+                                        "timestamp": datetime.now().isoformat(),
+                                        "success": recovery_result.get("success", False),
+                                        "is_recovery": True
+                                    })
+                                    
+                                    # If the recovery succeeded, continue with the next command
+                                    if recovery_result.get("success", False):
+                                        print(f"{Fore.GREEN}Recovery successful!{Style.RESET_ALL}")
+                                        break
+                            else:
+                                print(f"{Fore.RED}No valid recovery commands found.{Style.RESET_ALL}")
+                                
+                        except json.JSONDecodeError:
+                            print(f"{Fore.RED}Error parsing recovery commands. Continuing with next command.{Style.RESET_ALL}")
+                            
+                    except Exception as e:
+                        print(f"{Fore.RED}Error getting recovery commands: {str(e)}{Style.RESET_ALL}")
+            
+            # Complete the subtask
+            print(f"{Fore.GREEN}Completed subtask: {subtask}{Style.RESET_ALL}")
+            self.context.complete_current_task("Subtask commands executed")
+            
+            # Evaluate if the main task objective has been achieved
+            evaluate_prompt = f"""
+            Based on the execution of the subtask "{subtask}", evaluate if the main task objective "{task}" has been achieved.
+            
+            Previous subtasks completed:
+            {chr(10).join([f"- {s}" for s in task_plan.get("subtasks", [])[:i]])}
+            
+            Command execution for current subtask:
+            {chr(10).join([f"- {c.get('command', '')} -> {'Success' if c.get('success', False) else 'Failed: ' + c.get('error', '')}" for c in current_subtask.command_history])}
+            
+            Return your evaluation as a JSON object with the following properties:
+            - is_complete: boolean indicating if the main task objective is achieved
+            - result: string describing the result of the task
+            - reason: string explaining why the task is considered complete or incomplete
+            """
+            
+            try:
+                response = MODEL.generate_content(evaluate_prompt)
+                text = response.text
+                
+                # Try to extract JSON
+                try:
+                    # Check for code blocks
+                    if "```" in text:
+                        match = re.search(r'```(?:json)?(.*?)```', text, re.DOTALL)
+                        if match:
+                            json_str = match.group(1).strip()
+                        else:
+                            json_str = text
+                    else:
+                        match = re.search(r'({.*})', text, re.DOTALL)
+                        if match:
+                            json_str = match.group(1)
+                        else:
+                            json_str = text
+                    
+                    evaluation = json.loads(json_str)
+                    if evaluation.get("is_complete", False):
+                        main_task_objective_achieved = True
+                        main_task_result = evaluation.get("result", "Task complete")
+                        print(f"\n{Fore.GREEN}Main task objective achieved: {main_task_result}{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}Reason: {evaluation.get('reason', '')}{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}Remaining subtasks are no longer necessary. Ending task.{Style.RESET_ALL}")
+                        break
+                except Exception as e:
+                    print(f"{Fore.YELLOW}Error evaluating task completion: {str(e)}{Style.RESET_ALL}")
+        
+        # Complete the main task
+        if main_task_objective_achieved:
+            print(f"\n{Fore.GREEN}Task completed: {task}{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}Result: {main_task_result}{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.GREEN}Task completed: {task}{Style.RESET_ALL}")
+        
+        self.context.complete_current_task("All necessary subtasks completed")
+        
+        # Return the result for one-shot mode
+        return main_task_result if main_task_objective_achieved else "Task completed"
+    
+    async def cleanup(self):
+        """Cleanup resources after one-shot execution"""
+        # Just save history if needed
+        self.save_history()
+
 if __name__ == "__main__":
-    agent = AgentTerminal()
-    agent.run() 
+    import asyncio
+    
+    async def main():
+        agent = TerminalAgent()
+        await agent.initialize()
+        
+        print(f"{Fore.GREEN}Agent Terminal Assistant{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Type 'exit' to quit, 'help' for commands{Style.RESET_ALL}")
+        
+        while True:
+            try:
+                # Get user input
+                print("\nWhat would you like me to do? ", end="", flush=True)
+                task = input()
+                
+                # Handle basic commands
+                if task.lower() in ['exit', 'quit']:
+                    break
+                elif task.lower() == 'help':
+                    agent.show_help()
+                    continue
+                elif task.lower() == 'clear':
+                    os.system('cls' if os.name == 'nt' else 'clear')
+                    continue
+                elif task.lower() == 'history':
+                    agent.display_command_history()
+                    continue
+                elif task.lower() == 'pwd':
+                    print(f"Current directory: {agent.context.current_directory}")
+                    continue
+                elif task.lower() == 'tasks':
+                    agent.display_task_status()
+                    continue
+                elif task.lower() == 'context':
+                    agent.display_context()
+                    continue
+                elif task.lower().startswith('auto '):
+                    auto_cmd = task.lower().split('auto ', 1)[1].strip()
+                    if auto_cmd == 'on':
+                        agent.auto_run = True
+                        print(f"{Fore.GREEN}Auto-run mode enabled{Style.RESET_ALL}")
+                    elif auto_cmd == 'off':
+                        agent.auto_run = False
+                        print(f"{Fore.YELLOW}Auto-run mode disabled{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.RED}Invalid auto command. Use 'auto on' or 'auto off'{Style.RESET_ALL}")
+                    continue
+                
+                # Process the task using the agent approach
+                await agent.process_task(task)
+                
+            except KeyboardInterrupt:
+                print("\nOperation cancelled by user")
+                continue
+            except Exception as e:
+                print(f"{Fore.RED}Error: {str(e)}{Style.RESET_ALL}")
+                import traceback
+                traceback.print_exc()
+                continue
+        
+        # Save history one last time
+        await agent.cleanup()
+        print(f"{Fore.GREEN}Thank you for using Agent Terminal Assistant!{Style.RESET_ALL}")
+    
+    asyncio.run(main()) 

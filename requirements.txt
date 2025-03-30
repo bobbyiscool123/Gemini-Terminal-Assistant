@@ -1,32 +1,32 @@
 # Core dependencies
-google-generativeai>=0.3.0      # Google Gemini AI API
-python-dotenv>=1.0.0            # Environment variable management 
-colorama>=0.4.6                 # Terminal color output
-pyyaml>=6.0.1                   # YAML configuration support
+google-generativeai      # Google Gemini AI API
+python-dotenv            # Environment variable management 
+colorama                 # Terminal color output
+pyyaml                   # YAML configuration support
 
 # Enhanced terminal UI
-rich>=13.7.0                    # Rich text and formatting in terminal
-termcolor>=2.3.0                # Simple colored terminal text
+rich                     # Rich text and formatting in terminal
+termcolor                # Simple colored terminal text
 
 # System integrations
-psutil>=5.9.5                   # System monitoring and process utilities
-pywin32>=306; platform_system == "Windows"  # Windows system integration
-better-exceptions>=0.3.3        # Better exception formatting
+psutil                   # System monitoring and process utilities
+pywin32; platform_system == "Windows"  # Windows system integration
+better-exceptions        # Better exception formatting
 
 # File operations and monitoring
-watchdog>=3.0.0                 # File system monitoring
-tqdm>=4.66.1                    # Progress bar utilities
+watchdog                 # File system monitoring
+tqdm                     # Progress bar utilities
 
 # Web and parsing support
-requests>=2.31.0                # HTTP requests
-beautifulsoup4>=4.12.2          # HTML/XML parsing
-jsonschema>=4.19.0              # JSON schema validation
+requests                 # HTTP requests
+beautifulsoup4           # HTML/XML parsing
+jsonschema               # JSON schema validation
 
 # Document handling
-pillow>=10.2.0                  # Image processing library
-pypdf2>=3.0.1                   # PDF manipulation
+pillow                   # Image processing library
+pypdf2                   # PDF manipulation
 
 # Optional voice capabilities
-pyttsx3>=2.90; platform_system == "Windows"   # Text-to-speech
-SpeechRecognition>=3.10.0; platform_system == "Windows"  # Speech recognition
-pyaudio>=0.2.14; platform_system == "Windows"  # Audio support for speech features 
+pyttsx3; platform_system == "Windows"   # Text-to-speech
+SpeechRecognition; platform_system == "Windows"  # Speech recognition
+pyaudio; platform_system == "Windows"  # Audio support for speech features 

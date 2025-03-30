@@ -45,6 +45,62 @@ cd ai-terminal-assistant
 pip install -r requirements.txt
 ```
 
+### Linux/Termux/PRoot-distro Users
+
+For Linux environments, especially on ARM64 platforms like Termux or PRoot-distro:
+
+#### Using the Setup Script
+
+Run the provided setup script to automatically install Conda, Python 3.12.8, and set up the virtual environment:
+
+```bash
+python setup.py
+```
+
+The setup script is smart enough to detect existing installations and will:
+- Use your current virtual environment if it has Python 3.12.x
+- Detect existing conda environments with Python 3.12.8
+- Avoid reinstalling components that are already set up
+
+#### Uninstalling
+
+To uninstall the Gemini Terminal Assistant:
+
+```bash
+python uninstall.py
+```
+
+This will:
+- Remove the terminal-assistant command from your system
+- Optionally remove the virtual environment
+- Optionally remove the conda environment
+
+#### Manual Setup with Conda
+
+1. Install Miniforge (Conda for ARM64):
+   ```bash
+   curl -L -o miniforge.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh
+   bash miniforge.sh -b -p $HOME/miniforge3
+   source $HOME/miniforge3/bin/activate
+   ```
+
+2. Create a Python 3.12.8 environment:
+   ```bash
+   conda create -n py3128 python=3.12.8 -y
+   conda activate py3128
+   ```
+
+3. Create and activate a virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate
+   ```
+
+4. Install dependencies:
+   ```bash
+   pip install --prefer-binary -r requirements.txt
+   ```
+
 ### 3. Configure API access
 
 Create a `.env` file in the project root with your Google API key:
@@ -69,6 +125,31 @@ Or start the terminal assistant directly:
 
 ```bash
 python agent_terminal.py
+```
+
+### Using the Command-line Wrapper
+
+You can also use the Gemini Terminal Assistant as a command directly from your terminal:
+
+```bash
+terminal-assistant "your task here"
+```
+
+This allows you to:
+- Run a single task without keeping the assistant open
+- Execute tasks from any directory
+- Integrate the assistant with other shell scripts and workflows
+
+The command-line wrapper is automatically installed when you run the setup script:
+
+```bash
+python setup.py
+```
+
+The wrapper will be available from anywhere in your system after you source your `.bashrc` file or restart your terminal:
+
+```bash
+source ~/.bashrc
 ```
 
 ### Basic Commands

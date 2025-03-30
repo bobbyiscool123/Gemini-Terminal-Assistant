@@ -46,22 +46,35 @@ except ImportError:
     Fore = DummyFore()
     Style = DummyStyle()
 
-# Model handling
-import google.generativeai as genai
+# Initialize variables that will be set in init_gemini
+MODEL = None
+SILENT_MODE = False
 
-# Load environment variables
-print("Loading environment variables...")
-load_dotenv()
+def init_gemini(silent=False):
+    """Initialize Gemini API with option for silent mode"""
+    global MODEL, SILENT_MODE
+    SILENT_MODE = silent
+    
+    # Load environment variables
+    if not silent:
+        print("Loading environment variables...")
+    load_dotenv()
+    
+    # Initialize Gemini API
+    GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+    if not GOOGLE_API_KEY:
+        print("Error: GOOGLE_API_KEY not found in environment variables")
+        sys.exit(1)
+    
+    # Configure Gemini API
+    if not silent:
+        print("Configuring Gemini API...")
+    import google.generativeai as genai
+    genai.configure(api_key=GOOGLE_API_KEY)
+    MODEL = genai.GenerativeModel('gemini-2.0-flash')  # Use Flash for faster responses
 
-# Initialize Gemini API
-GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-if not GOOGLE_API_KEY:
-    print("Error: GOOGLE_API_KEY not found in environment variables")
-    sys.exit(1)
-
-print("Configuring Gemini API...")
-genai.configure(api_key=GOOGLE_API_KEY)
-MODEL = genai.GenerativeModel('gemini-2.0-flash')  # Use Flash for faster responses
+# Import MCP server
+from mcp_server import mcp
 
 # Import agent utilities if available
 try:
@@ -69,9 +82,6 @@ try:
     HAS_AGENT_UTILS = True
 except ImportError:
     HAS_AGENT_UTILS = False
-
-# Import MCP server
-from mcp_server import mcp
 
 class TaskState:
     """Represents the state of a task in the agent system"""
@@ -243,30 +253,107 @@ Session Duration: {str(datetime.now() - self.session_start_time).split('.')[0]}
 """
 
 class AgentTerminal:
-    """Agent-based Terminal Assistant that works as a contextual and planning agent"""
+    """Terminal-based AI assistant agent"""
     
-    def __init__(self):
-        """Initialize the Agent Terminal"""
+    def __init__(self, auto_run=False, silent_init=False):
+        """Initialize the agent terminal"""
+        # Initialize Gemini in silent mode if requested
+        init_gemini(silent=silent_init)
+        
         self.context = AgentContext()
-        self.history_file = "command_history.json"
-        self.last_process_result = None
-        self.console = Console() if HAS_RICH else None
-        self.auto_run = True  # Auto-run is enabled by default
-        self.question_probability = 0.1  # 10% chance to ask questions
-        
-        # Load config
         self.config = self.load_config()
+        self.command_history = []
+        self.auto_run = self.config.get("auto_run", False)
+        self.silent_init = silent_init
         
-        # Override defaults with config values if available
-        self.auto_run = self.config.get("auto_run", True)
-        self.question_probability = self.config.get("question_probability", 0.1)
+        if auto_run:
+            self.auto_run = True
         
-        # Load command history
+        # Load command history from previous sessions
         self.load_history()
         
-        print(f"{Fore.GREEN}Agent Terminal Assistant initialized{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}Auto-run mode: {'Enabled' if self.auto_run else 'Disabled'}{Style.RESET_ALL}")
+        if not silent_init:
+            print("Agent Terminal Assistant initialized")
+            if self.auto_run:
+                print("Auto-run mode: Enabled")
+            else:
+                print("Auto-run mode: Disabled (use 'auto on' to enable)")
+            print(f"Loaded {len(self.command_history)} command(s) from history.")
+            print("Agent Terminal Assistant")
+            print("Type 'exit' to quit, 'help' for commands")
+            print()
+    
+    def process_user_input(self, user_input):
+        """Process a single user input and execute it"""
+        if user_input.strip().lower() == 'exit':
+            self.save_history()
+            return False
+            
+        if user_input.strip().lower() == 'help':
+            self.show_help()
+            return True
+            
+        if user_input.strip().lower() == 'history':
+            self.display_command_history()
+            return True
+            
+        if user_input.strip().lower() == 'tasks':
+            self.display_task_status()
+            return True
+            
+        if user_input.strip().lower() == 'context':
+            self.display_context()
+            return True
+            
+        if user_input.strip().lower() == 'auto on':
+            self.auto_run = True
+            print("Auto-run mode enabled")
+            return True
+            
+        if user_input.strip().lower() == 'auto off':
+            self.auto_run = False
+            print("Auto-run mode disabled")
+            return True
+            
+        if user_input.strip().lower() == 'clear':
+            os.system('cls' if platform.system() == 'Windows' else 'clear')
+            return True
+            
+        if user_input.strip().lower().startswith('cd '):
+            path = user_input.strip()[3:].strip()
+            self.change_directory(path)
+            return True
+            
+        if user_input.strip().lower() == 'pwd':
+            print(os.getcwd())
+            return True
+            
+        # Add to command history
+        self.command_history.append(user_input)
+        self.save_history()
         
+        # Process the task
+        self.process_user_task(user_input)
+        return True
+            
+    def run(self):
+        """Run the agent terminal in interactive mode"""
+        while True:
+            try:
+                print()
+                user_input = input("What would you like me to do?\n")
+                if not self.process_user_input(user_input):
+                    break
+            except KeyboardInterrupt:
+                print("\nInterrupted by user. Exiting...")
+                self.save_history()
+                break
+            except Exception as e:
+                print(f"Error: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                continue
+
     def load_config(self) -> Dict:
         """Load configuration from config.yaml"""
         try:
@@ -289,22 +376,22 @@ class AgentTerminal:
     def load_history(self):
         """Load command history from file"""
         try:
-            if os.path.exists(self.history_file):
-                with open(self.history_file, 'r') as f:
-                    self.context.command_history = json.load(f)
-                print(f"Loaded {len(self.context.command_history)} command(s) from history.")
+            if os.path.exists(self.config["history_file"]):
+                with open(self.config["history_file"], 'r') as f:
+                    self.command_history = json.load(f)
+                print(f"Loaded {len(self.command_history)} command(s) from history.")
             else:
-                print(f"History file {self.history_file} not found. Creating empty history.")
-                self.context.command_history = []
+                print(f"History file {self.config['history_file']} not found. Creating empty history.")
+                self.command_history = []
         except Exception as e:
             print(f"Error loading history: {str(e)}")
-            self.context.command_history = []
+            self.command_history = []
             
     def save_history(self):
         """Save command history to file"""
         try:
-            with open(self.history_file, 'w') as f:
-                json.dump(self.context.command_history, f, indent=2)
+            with open(self.config["history_file"], 'w') as f:
+                json.dump(self.command_history, f, indent=2)
             print("History saved successfully.")
         except Exception as e:
             print(f"Error saving history: {str(e)}")
@@ -699,8 +786,6 @@ Return ONLY the raw commands, one per line, with NO explanations, backticks, or 
                 "timestamp": datetime.now().isoformat()
             }
             
-            self.last_process_result = result
-            
             # Add to context
             self.context.add_command_to_current_task(result)
             
@@ -730,7 +815,6 @@ Return ONLY the raw commands, one per line, with NO explanations, backticks, or 
                 "timestamp": datetime.now().isoformat()
             }
             
-            self.last_process_result = result
             self.context.add_command_to_current_task(result)
             self.context.recent_errors.append((command, error_msg))
             return result
@@ -780,12 +864,12 @@ For any other tasks, simply describe what you want to do
     
     def display_command_history(self):
         """Display command history"""
-        if not self.context.command_history:
+        if not self.command_history:
             print(f"{Fore.YELLOW}No command history available{Style.RESET_ALL}")
             return
             
         print(f"{Fore.CYAN}Command History:{Style.RESET_ALL}")
-        for i, cmd in enumerate(self.context.command_history, 1):
+        for i, cmd in enumerate(self.command_history, 1):
             status = f"{Fore.GREEN}Success{Style.RESET_ALL}" if cmd.get("exit_code", 1) == 0 else f"{Fore.RED}Failed ({cmd.get('exit_code')}){Style.RESET_ALL}"
             execution_time = f"{cmd.get('execution_time', 0):.2f}s"
             print(f"{i}. {cmd.get('command', '')} - {status} - {execution_time}")
@@ -809,7 +893,7 @@ For any other tasks, simply describe what you want to do
     
     def should_ask_question(self) -> bool:
         """Determine if the agent should ask a question based on probability"""
-        return random.random() < self.question_probability
+        return random.random() < self.config.get("question_probability", 0.1)
     
     def ask_question(self, task: str, subtask: str = None) -> Optional[str]:
         """Generate and ask a clarifying question if necessary"""
@@ -1325,66 +1409,6 @@ Return a JSON object with this structure:
         
         # Save command history
         self.save_history()
-    
-    def run(self):
-        """Main run loop"""
-        print(f"{Fore.GREEN}Agent Terminal Assistant{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}Type 'exit' to quit, 'help' for commands{Style.RESET_ALL}")
-        
-        while True:
-            try:
-                # Get user input
-                print("\nWhat would you like me to do? ", end="", flush=True)
-                task = input()
-                
-                # Handle basic commands
-                if task.lower() in ['exit', 'quit']:
-                    break
-                elif task.lower() == 'help':
-                    self.show_help()
-                    continue
-                elif task.lower() == 'clear':
-                    os.system('cls' if os.name == 'nt' else 'clear')
-                    continue
-                elif task.lower() == 'history':
-                    self.display_command_history()
-                    continue
-                elif task.lower() == 'pwd':
-                    print(f"Current directory: {self.context.current_directory}")
-                    continue
-                elif task.lower() == 'tasks':
-                    self.display_task_status()
-                    continue
-                elif task.lower() == 'context':
-                    self.display_context()
-                    continue
-                elif task.lower().startswith('auto '):
-                    auto_cmd = task.lower().split('auto ', 1)[1].strip()
-                    if auto_cmd == 'on':
-                        self.auto_run = True
-                        print(f"{Fore.GREEN}Auto-run mode enabled{Style.RESET_ALL}")
-                    elif auto_cmd == 'off':
-                        self.auto_run = False
-                        print(f"{Fore.YELLOW}Auto-run mode disabled{Style.RESET_ALL}")
-                    else:
-                        print(f"{Fore.RED}Invalid auto command. Use 'auto on' or 'auto off'{Style.RESET_ALL}")
-                    continue
-                
-                # Process the task using the agent approach
-                self.process_user_task(task)
-                
-            except KeyboardInterrupt:
-                print("\nOperation cancelled by user")
-                continue
-            except Exception as e:
-                print(f"{Fore.RED}Error: {str(e)}{Style.RESET_ALL}")
-                import traceback
-                traceback.print_exc()
-                continue
-        
-        # Save history one last time
-        self.save_history()
-        print(f"{Fore.GREEN}Thank you for using Agent Terminal Assistant!{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     agent = AgentTerminal()

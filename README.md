@@ -22,30 +22,44 @@
 - **📦 Package Manager Integration** - Automatically installs Chocolatey (Windows) when needed for installing software
 - **🏃 Auto-Run Mode** - Executes tasks automatically without requiring confirmation for each step
 - **❓ Intelligent Questioning** - Asks clarifying questions only when necessary for task completion
+- **🚀 Portable Usage** - Run from anywhere with the portable batch file setup
 
 ## 📋 Requirements
 
 - Python 3.8 or higher
 - Google API key for Gemini AI
 - Internet connection for AI operations
-- Windows, macOS, or Linux operating system
+- Windows operating system (for portable/global setup)
 
 ## 🚀 Installation
 
-### 1. Clone the repository
+### Option 1: Quick Setup (Recommended)
+
+Run the `setup_global.bat` file to automatically:
+1. Create a virtual environment
+2. Install all dependencies
+3. Make the assistant accessible from anywhere in your system
+
+```bash
+setup_global.bat
+```
+
+### Option 2: Manual Setup
+
+#### 1. Clone the repository
 
 ```bash
 git clone https://github.com/yourusername/ai-terminal-assistant.git
 cd ai-terminal-assistant
 ```
 
-### 2. Install dependencies
+#### 2. Run the setup script
 
 ```bash
-pip install -r requirements.txt
+python setup.py
 ```
 
-### 3. Configure API access
+#### 3. Configure API access
 
 Create a `.env` file in the project root with your Google API key:
 
@@ -55,20 +69,32 @@ GOOGLE_API_KEY=your_api_key_here
 
 You can obtain a Gemini API key from [Google AI Studio](https://ai.google.dev/).
 
-## 🎮 Usage
+#### 4. (Optional) Make globally accessible
 
-### Starting the Assistant
-
-Run the assistant using the launcher script:
+To make the assistant accessible from anywhere:
 
 ```bash
-python run_agent.py
+python launcher.py
 ```
 
-Or start the terminal assistant directly:
+## 🎮 Usage
+
+### Running the Assistant
+
+#### Option 1: Run from anywhere (after global setup)
+
+Open any terminal or command prompt and type:
 
 ```bash
-python agent_terminal.py
+terminal-assistant
+```
+
+#### Option 2: Run directly from the project folder
+
+Double-click on `terminal-assistant.bat` or run:
+
+```bash
+terminal-assistant.bat
 ```
 
 ### Basic Commands
@@ -117,6 +143,9 @@ The assistant is built with a modular architecture:
 - **mcp_server.py** - Model Context Protocol server for system operations
 - **agent_utils.py** - Utility functions for platform detection and command validation
 - **run_agent.py** - Launcher script with dependency checking
+- **setup.py** - Setup script for creating virtual environment and installing dependencies
+- **terminal-assistant.bat** - Batch file for running the assistant
+- **launcher.py** - Script for making the assistant globally accessible
 
 ## ⚙️ Configuration
 

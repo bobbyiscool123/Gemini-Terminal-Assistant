@@ -1729,5 +1729,5 @@ if __name__ == "__main__":
         agent = AgentTerminal()
         agent.run_one_shot(args.one_shot)
     else:
-        agent = AgentTerminal()
-        agent.run() 
+    agent = AgentTerminal()
+    agent.run() 

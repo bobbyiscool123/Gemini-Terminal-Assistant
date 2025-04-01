@@ -75,7 +75,7 @@ class MCPServer:
                     subprocess.run([path, "--version"], capture_output=True, check=True)
                     managers["pip"] = True
                     break
-            except:
+        except:
                 continue
                 
         # Check conda with multiple possible paths
@@ -91,9 +91,9 @@ class MCPServer:
                     subprocess.run([path, "--version"], capture_output=True, check=True)
                     managers["conda"] = True
                     break
-            except:
+        except:
                 continue
-                
+            
         return managers
     
     def _get_drive_info(self) -> Dict:
@@ -291,7 +291,7 @@ class MCPServer:
                 return False
         else:
             print(f"Package manager '{manager}' not supported for installation")
-            return False
+        return False
     
     def get_package_info(self, package_name: str) -> Dict:
         """Get information about an installed package"""
@@ -315,9 +315,9 @@ class MCPServer:
                         info["install_location"] = line.split(":", 1)[1].strip()
                     elif line.startswith("Summary:"):
                         info["description"] = line.split(":", 1)[1].strip()
-        except:
-            pass
-        
+            except:
+                pass
+                
         # Check apt package
         if not info["installed"]:
             try:
@@ -335,7 +335,7 @@ class MCPServer:
         return info
 
 # Create global instance
-mcp = MCPServer()
+mcp = MCPServer() 
 
 if __name__ == "__main__":
     # Example usage

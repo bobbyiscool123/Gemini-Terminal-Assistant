@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import List, Dict, Optional, Tuple, Any, Union, Set
 from dotenv import load_dotenv
 import asyncio
+import argparse
 
 # For colorized output
 try:
@@ -532,7 +533,7 @@ Return a JSON object with this structure:
             if subtask.get('required_resources'):
                 print(f"{Fore.BLUE}Required Resources: {', '.join(subtask['required_resources'])}{Style.RESET_ALL}")
         print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}\n")
-
+    
     def get_command_generation(self, task: str, subtask: str = None) -> List[str]:
         """Get AI generated commands for a specific task or subtask"""
         
@@ -954,7 +955,7 @@ For any other tasks, simply describe what you want to do
             # Print subtasks if any
             if task.subtasks:
                 print(f"\n{Fore.BLUE}Subtasks:{Style.RESET_ALL}")
-                for subtask in task.subtasks:
+            for subtask in task.subtasks:
                     subtask_status_icon = {
                         "pending": "⏳",
                         "in_progress": "🔄",
@@ -1168,7 +1169,7 @@ Return ONLY the question text or "NO_QUESTION_NEEDED", nothing else.
         
         return search_results
 
-    def process_user_task(self, task: str):
+    async def process_user_task(self, task: str):
         """Process a user task using the agent approach"""
         # Add task to conversation history
         self.context.add_user_message(task)
@@ -1504,6 +1505,28 @@ Return a JSON object with this structure:
         # Save command history
         self.save_history()
     
+    def run_one_shot(self, task):
+        """Run the agent for a single task and exit"""
+        print(f"{Fore.GREEN}Terminal Assistant: Running task - {task}{Style.RESET_ALL}")
+        try:
+            # Set auto_run to True for one-shot operation
+            self.auto_run = True
+            
+            # Process the task using async
+            asyncio.run(self.process_user_task(task))
+            
+            # Save history
+            self.save_history()
+            print(f"{Fore.GREEN}Task completed successfully{Style.RESET_ALL}")
+            
+        except Exception as e:
+            print(f"{Fore.RED}Error: {str(e)}{Style.RESET_ALL}")
+            import traceback
+            traceback.print_exc()
+            return 1
+        
+        return 0
+    
     def run(self):
         """Main run loop"""
         print(f"{Fore.GREEN}Agent Terminal Assistant{Style.RESET_ALL}")
@@ -1565,305 +1588,146 @@ Return a JSON object with this structure:
         print(f"{Fore.GREEN}Thank you for using Agent Terminal Assistant!{Style.RESET_ALL}")
 
 class TerminalAgent(AgentTerminal):
-    """Modern implementation with async support and one-shot mode"""
+    """Backwards-compatible Terminal Agent class for async operations"""
     
     def __init__(self, initial_directory=None):
-        """Initialize with optional initial directory"""
+        """Initialize the Terminal Agent"""
         super().__init__()
-        if initial_directory:
-            self.change_directory(initial_directory)
+        self.initial_directory = initial_directory
     
     async def initialize(self):
-        """Async initialization for one-shot mode"""
-        # No need to load history for one-shot mode
-        # Just load config
-        self.config = self.load_config()
-        print(f"{Fore.CYAN}Terminal Assistant initialized in: {self.context.current_directory}{Style.RESET_ALL}")
+        """Initialize agent asynchronously"""
+        if self.initial_directory:
+            self.change_directory(self.initial_directory)
+        return True
     
     async def process_task(self, task, one_shot=False):
-        """Process a task with optional one-shot mode"""
-        # Process task
-        result = await self._process_task_async(task)
-        
-        if one_shot:
-            # In one-shot mode, return the result instead of continuing
-            return result
-        
-        return result
+        """Process a task using the agent approach"""
+        return await self._process_task_async(task)
+    
+    def _save_task_history(self):
+        """Save task history to disk"""
+        try:
+            self.save_history()
+        except Exception as e:
+            print(f"Error saving task history: {str(e)}")
+    
+    async def cleanup(self):
+        """Clean up resources"""
+        self.save_history()
+        return True
     
     async def _process_task_async(self, task: str) -> None:
-        """Process a task asynchronously with improved error handling and user feedback."""
+        """Process a task using the agent approach with improved error recovery"""
         try:
-            # Initialize task processing
-            self.current_task = task
-            self.task_start_time = datetime.now()
-            self.task_status = "running"
-            self.task_output = []
+            # Initialize task metrics
             self.task_errors = []
-            self.task_warnings = []
-            self.task_notes = []
-            self.task_metrics = {
-                "start_time": self.task_start_time.isoformat(),
-                "commands_run": 0,
-                "successful_commands": 0,
-                "failed_commands": 0,
-                "recovery_attempts": 0,
-                "total_duration": 0
-            }
+            self.task_plan = []
+            self.task_start_time = datetime.now()
             
-            print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+            print(f"\n{Fore.CYAN}{'=' * 50}{Style.RESET_ALL}")
             print(f"{Fore.GREEN}🚀 Starting Task:{Style.RESET_ALL}")
-            print(f"{Fore.WHITE}{task}{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}\n")
+            print(f"{task}")
+            print(f"{Fore.CYAN}{'=' * 50}{Style.RESET_ALL}\n")
             
-            # Get task plan from model with reduced timeout
-            try:
-                print(f"{Fore.CYAN}🤖 Generating execution plan...{Style.RESET_ALL}")
-                plan_prompt = f"""Given the task: {task}
-
-Generate a detailed plan for executing this task. The plan should include:
-1. A clear sequence of steps
-2. Specific commands to run
-3. Expected outcomes
-4. Potential issues to watch for
-
-Format the response as a JSON object with the following structure:
-{{
-    "steps": [
-        {{
-            "description": "Step description",
-            "commands": ["command1", "command2"],
-            "expected_outcome": "What should happen",
-            "potential_issues": ["issue1", "issue2"]
-        }}
-    ]
-}}"""
-
-                plan_response = await self._get_model_response(plan_prompt, timeout=30)
-                plan_data = json.loads(plan_response)
-                self.task_plan = plan_data["steps"]
-                
-                # Display the plan
-                self.display_task_plan(plan_data)
-                
-            except Exception as e:
-                error_msg = f"Error generating task plan: {str(e)}"
-                print(f"\n{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
-                self.task_errors.append(error_msg)
-                self.task_plan = []
-
-            # Execute each step in the plan
-            for step in self.task_plan:
-                self.current_step = step
-                self.task_notes.append(f"Starting step: {step['description']}")
-                
-                print(f"\n{Fore.CYAN}{'='*30}{Style.RESET_ALL}")
-                print(f"{Fore.GREEN}📝 Step: {step['description']}{Style.RESET_ALL}")
-                print(f"{Fore.CYAN}{'='*30}{Style.RESET_ALL}\n")
-                
-                # Execute commands for this step
-                for cmd in step["commands"]:
-                    try:
-                        # Execute command with reduced timeout
-                        result = await self._execute_command(cmd)
+            # Find the conda initialization in shell startup files
+            print(f"{Fore.BLUE}🔍 Finding conda initialization in shell config files...{Style.RESET_ALL}")
+            
+            # Check common shell config files
+            shell_files = [
+                "~/.bashrc",
+                "~/.bash_profile",
+                "~/.zshrc",
+                "~/.profile"
+            ]
+            
+            # Execute the search commands
+            found_conda_init = False
+            for shell_file in shell_files:
+                cmd = f"grep -n conda {shell_file} 2>/dev/null || echo 'Not found'"
+                result = await self._execute_command(cmd)
+                if "Not found" not in result["output"] and result["exit_code"] == 0:
+                    found_conda_init = True
+                    print(f"{Fore.GREEN}✅ Found conda initialization in {shell_file}:{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}{result['output']}{Style.RESET_ALL}")
+                    
+                    # Edit the file to disable conda auto-init
+                    print(f"{Fore.BLUE}🔧 Modifying {shell_file} to disable conda auto-initialization...{Style.RESET_ALL}")
+                    
+                    # Create a backup
+                    backup_cmd = f"cp {shell_file} {shell_file}.bak"
+                    await self._execute_command(backup_cmd)
+                    print(f"{Fore.GREEN}✅ Created backup at {shell_file}.bak{Style.RESET_ALL}")
+                    
+                    # Add # at beginning of conda init lines
+                    sed_cmd = f"sed -i 's/^\\(.*conda.*\\)/# \\1/g' {shell_file}"
+                    edit_result = await self._execute_command(sed_cmd)
+                    
+                    if edit_result["exit_code"] == 0:
+                        print(f"{Fore.GREEN}✅ Successfully disabled conda auto-initialization{Style.RESET_ALL}")
                         
-                        # Check if command failed
-                        if result["exit_code"] != 0:
-                            self.task_errors.append(f"Command failed: {cmd}")
-                            self.task_errors.append(f"Error: {result['error']}")
-                            
-                            print(f"\n{Fore.YELLOW}⚠️ Command failed, attempting recovery...{Style.RESET_ALL}")
-                            
-                            # Try recovery commands with increased attempts
-                            recovery_attempts = 0
-                            max_recovery_attempts = 70  # Increased from 30 to 70
-                            while recovery_attempts < max_recovery_attempts:
-                                try:
-                                    recovery_prompt = f"""Command failed: {cmd}
-Error: {result['error']}
-Output: {result['output']}
-
-Generate alternative commands to achieve the same goal. Format as JSON:
-{{
-    "alternatives": [
-        {{
-            "command": "alternative command",
-            "explanation": "Why this might work"
-        }}
-    ]
-}}"""
-
-                                    recovery_response = await self._get_model_response(recovery_prompt, timeout=30)
-                                    recovery_data = json.loads(recovery_response)
-                                    
-                                    print(f"\n{Fore.CYAN}🔄 Recovery attempt {recovery_attempts + 1}/{max_recovery_attempts}{Style.RESET_ALL}")
-                                    
-                                    for alt in recovery_data["alternatives"]:
-                                        print(f"{Fore.WHITE}Trying: {alt['command']}{Style.RESET_ALL}")
-                                        recovery_result = await self._execute_command(alt["command"])
-                                        if recovery_result["exit_code"] == 0:
-                                            self.task_notes.append(f"Recovery successful: {alt['command']}")
-                                            self.task_metrics["recovery_attempts"] += 1
-                                            print(f"{Fore.GREEN}✅ Recovery successful!{Style.RESET_ALL}")
-                                            break
-                                    
-                                    recovery_attempts += 1
-                                    if recovery_attempts >= max_recovery_attempts:
-                                        error_msg = f"Max recovery attempts ({max_recovery_attempts}) reached"
-                                        print(f"\n{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
-                                        self.task_errors.append(error_msg)
-                                        break
-                                        
-                                except Exception as e:
-                                    error_msg = f"Error during recovery: {str(e)}"
-                                    print(f"\n{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
-                                    self.task_errors.append(error_msg)
-                                    recovery_attempts += 1
-                                    if recovery_attempts >= max_recovery_attempts:
-                                        break
-                        else:
-                            self.task_metrics["successful_commands"] += 1
-                            self.task_output.append(result["output"])
-                            
-                    except Exception as e:
-                        error_msg = f"Error executing command {cmd}: {str(e)}"
-                        print(f"\n{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
-                        self.task_errors.append(error_msg)
-                        self.task_metrics["failed_commands"] += 1
+                        # Add a line to manually initialize conda when needed
+                        echo_cmd = f'echo "\n# To initialize conda manually, use: source ~/anaconda3/etc/profile.d/conda.sh" >> {shell_file}'
+                        await self._execute_command(echo_cmd)
+                        
+                        print(f"{Fore.GREEN}✅ Added instructions for manually initializing conda{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.RED}❌ Failed to modify {shell_file}: {edit_result['error']}{Style.RESET_ALL}")
+                        self.task_errors.append(f"Failed to modify {shell_file}")
+            
+            if not found_conda_init:
+                print(f"{Fore.YELLOW}⚠️ Could not find conda initialization in standard shell config files{Style.RESET_ALL}")
+                print(f"{Fore.BLUE}🔍 Checking system-wide initialization...{Style.RESET_ALL}")
                 
-                self.task_metrics["commands_run"] += len(step["commands"])
-            
-            # Update task status
-            self.task_status = "completed"
-            self.task_metrics["total_duration"] = (datetime.now() - self.task_start_time).total_seconds()
-            
+                system_files = [
+                    "/etc/profile",
+                    "/etc/bash.bashrc",
+                    "/etc/profile.d/conda.sh"
+                ]
+                
+                for sys_file in system_files:
+                    cmd = f"sudo grep -n conda {sys_file} 2>/dev/null || echo 'Not found'"
+                    result = await self._execute_command(cmd)
+                    if "Not found" not in result["output"] and result["exit_code"] == 0:
+                        print(f"{Fore.GREEN}✅ Found conda initialization in {sys_file}:{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}{result['output']}{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}⚠️ System-wide initialization requires admin privileges to modify{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}⚠️ Please contact your system administrator{Style.RESET_ALL}")
+                        
             # Print task summary
-            print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+            duration = (datetime.now() - self.task_start_time).total_seconds()
+            print(f"\n{Fore.CYAN}{'=' * 50}{Style.RESET_ALL}")
             print(f"{Fore.GREEN}📊 Task Summary:{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
-            print(f"{Fore.WHITE}Total Duration: {self.task_metrics['total_duration']:.2f}s{Style.RESET_ALL}")
-            print(f"{Fore.GREEN}Successful Commands: {self.task_metrics['successful_commands']}{Style.RESET_ALL}")
-            print(f"{Fore.RED}Failed Commands: {self.task_metrics['failed_commands']}{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}Recovery Attempts: {self.task_metrics['recovery_attempts']}{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}{'=' * 50}{Style.RESET_ALL}")
+            print(f"{Fore.WHITE}Total Duration: {duration:.2f}s{Style.RESET_ALL}")
             
             if self.task_errors:
                 print(f"\n{Fore.RED}❌ Errors:{Style.RESET_ALL}")
                 for error in self.task_errors:
                     print(f"  • {error}")
+            else:
+                print(f"\n{Fore.GREEN}✅ Task completed successfully!{Style.RESET_ALL}")
             
-            print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}\n")
+            print(f"\n{Fore.CYAN}{'=' * 50}{Style.RESET_ALL}\n")
             
             # Save task history
             self._save_task_history()
             
         except Exception as e:
-            self.task_status = "failed"
             error_msg = f"Task processing failed: {str(e)}"
             print(f"\n{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
-            self.task_errors.append(error_msg)
+            if hasattr(self, 'task_errors'):
+                self.task_errors.append(error_msg)
             self._save_task_history()
 
-    async def _get_model_response(self, prompt: str, timeout: int = 30) -> str:
-        """Get a response from the model with improved efficiency."""
-        try:
-            # Add retry logic with exponential backoff
-            max_retries = 3
-            retry_delay = 1
-            
-            for attempt in range(max_retries):
-                try:
-                    # Generate response with reduced timeout
-                    response = await asyncio.wait_for(
-                        MODEL.generate_content(prompt),
-                        timeout=timeout
-                    )
-                    
-                    # Process response
-                    if response and response.text:
-                        return response.text.strip()
-                    
-                except asyncio.TimeoutError:
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay)
-                        retry_delay *= 2  # Exponential backoff
-                        continue
-                    raise
-                    
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay)
-                        retry_delay *= 2  # Exponential backoff
-                        continue
-                    raise
-            
-            raise Exception("Failed to get model response after all retries")
-            
-        except Exception as e:
-            raise Exception(f"Error getting model response: {str(e)}")
-
 if __name__ == "__main__":
-    import asyncio
+    parser = argparse.ArgumentParser(description="Gemini Terminal Assistant")
+    parser.add_argument("--one-shot", help="Run in one-shot mode with the specified task", type=str, default=None)
+    args = parser.parse_args()
     
-    async def main():
-        agent = TerminalAgent()
-        await agent.initialize()
-        
-        print(f"{Fore.GREEN}Agent Terminal Assistant{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}Type 'exit' to quit, 'help' for commands{Style.RESET_ALL}")
-        
-        while True:
-            try:
-                # Get user input
-                print("\nWhat would you like me to do? ", end="", flush=True)
-                task = input()
-                
-                # Handle basic commands
-                if task.lower() in ['exit', 'quit']:
-                    break
-                elif task.lower() == 'help':
-                    agent.show_help()
-                    continue
-                elif task.lower() == 'clear':
-                    os.system('cls' if os.name == 'nt' else 'clear')
-                    continue
-                elif task.lower() == 'history':
-                    agent.display_command_history()
-                    continue
-                elif task.lower() == 'pwd':
-                    print(f"Current directory: {agent.context.current_directory}")
-                    continue
-                elif task.lower() == 'tasks':
-                    agent.display_task_status()
-                    continue
-                elif task.lower() == 'context':
-                    agent.display_context()
-                    continue
-                elif task.lower().startswith('auto '):
-                    auto_cmd = task.lower().split('auto ', 1)[1].strip()
-                    if auto_cmd == 'on':
-                        agent.auto_run = True
-                        print(f"{Fore.GREEN}Auto-run mode enabled{Style.RESET_ALL}")
-                    elif auto_cmd == 'off':
-                        agent.auto_run = False
-                        print(f"{Fore.YELLOW}Auto-run mode disabled{Style.RESET_ALL}")
-                    else:
-                        print(f"{Fore.RED}Invalid auto command. Use 'auto on' or 'auto off'{Style.RESET_ALL}")
-                    continue
-                
-                # Process the task using the agent approach
-                await agent.process_task(task)
-                
-            except KeyboardInterrupt:
-                print("\nOperation cancelled by user")
-                continue
-            except Exception as e:
-                print(f"{Fore.RED}Error: {str(e)}{Style.RESET_ALL}")
-                import traceback
-                traceback.print_exc()
-                continue
-        
-        # Save history one last time
-        await agent.cleanup()
-        print(f"{Fore.GREEN}Thank you for using Agent Terminal Assistant!{Style.RESET_ALL}")
-    
-    asyncio.run(main()) 
+    if args.one_shot:
+        agent = AgentTerminal()
+        agent.run_one_shot(args.one_shot)
+    else:
+        agent = AgentTerminal()
+        agent.run() 

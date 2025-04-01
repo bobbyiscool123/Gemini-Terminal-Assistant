@@ -30,12 +30,13 @@ The primary module that implements the AI agent functionality.
 
 ## prompt.py
 
-Manages all prompts sent to the Gemini API.
+Manages all prompts sent to the Gemini API and handles command generation.
 
 ### Key Components:
 
 - **PromptManager**: Central class for loading and formatting prompts
 - Global `prompt_manager` instance for easy importing
+- **generate_command**: Function that converts natural language to terminal commands
 
 ### Main Functionality:
 
@@ -43,12 +44,17 @@ Manages all prompts sent to the Gemini API.
 - Formatting prompts with context information
 - Building structured prompts for the Gemini API
 - Providing system prompts for different scenarios
+- Converting natural language requests into executable commands
+- Ensuring commands are safe and appropriate for the current system
 
 ### How It Interfaces:
 
-- Used by `agent_terminal.py` to generate all prompts
+- Used by `agent_terminal.py` to generate all prompts and commands
+- Called by `mcp_server.py` for generating system operation commands
+- Communicates directly with Gemini 2.5 Pro API
 - Reads from `config.yaml` for template configuration
 - Creates properly formatted prompts for Gemini 2.5 Pro
+- Returns clean, executable commands without explanation text
 
 ## mcp_server.py
 
@@ -57,20 +63,25 @@ The Model Context Protocol server bridges the AI agent and the operating system.
 ### Key Components:
 
 - **MCPServer**: Main class that provides system information and operations
-- Global `mcp` instance for easy importing
+- Integration with `prompt.py` for AI-generated commands
 
 ### Main Functionality:
 
-- Gathering system information
+- Gathering system information via AI-generated commands
 - Checking for installed software and package managers
-- File and directory operations
-- Package installation and information
+- File and directory operations through Gemini API
+- Package installation and verification
+- Secure command execution with proper validation
+- Dynamic adaptation to different operating systems
 
 ### How It Interfaces:
 
 - Used by `agent_terminal.py` for system operations
-- Executes system commands via subprocess
+- Calls `generate_command` from `prompt.py` for all operations
+- Uses AI to determine the appropriate commands for each operation
+- No hardcoded commands - all operations use Gemini-generated commands
 - Provides system context for the AI agent
+- Handles error cases and recovery options
 
 ## one_shot.py
 

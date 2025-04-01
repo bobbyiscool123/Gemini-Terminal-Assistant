@@ -7,6 +7,9 @@ CONFIG_FILE="$HOME/.config/terminal_assistant/config.yaml"
 LOG_FILE="$HOME/.config/terminal_assistant/terminal_assistant.log"
 HISTORY_FILE="$HOME/.config/terminal_assistant/command_history.txt"
 
+# Get the directory of the script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Create config directory if it doesn't exist
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
@@ -55,12 +58,25 @@ main() {
     
     # Pass the query through an environment variable
     export TA_USER_QUERY="$query"
+    export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+    export SCRIPT_DIR="$SCRIPT_DIR"
     
-    # Use the full agent_terminal.py with rich UI and task breakdown
-    python3 -c "
+    # Create a temporary Python script file
+    TEMP_SCRIPT=$(mktemp)
+    
+    # Write Python code to the temp file
+    cat > "$TEMP_SCRIPT" << 'ENDPYTHON'
+#!/usr/bin/env python3
 import sys
 import os
 import asyncio
+
+# Add the current directory to path if needed
+script_dir = os.environ.get('SCRIPT_DIR', '')
+if script_dir and script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+
+# Now import the module
 from agent_terminal import AgentTerminal
 
 # Get query from environment variable
@@ -70,7 +86,13 @@ query = os.environ.get('TA_USER_QUERY', '')
 agent = AgentTerminal()
 agent.auto_run = True  # Run without prompting
 asyncio.run(agent.process_user_task(query))
-"
+ENDPYTHON
+    
+    # Execute the Python script from the script directory
+    cd "$SCRIPT_DIR" && python3 "$TEMP_SCRIPT"
+    
+    # Clean up the temporary file
+    rm "$TEMP_SCRIPT"
 }
 
 # Handle command line arguments

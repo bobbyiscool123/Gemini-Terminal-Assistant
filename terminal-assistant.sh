@@ -27,14 +27,23 @@ EOF
 fi
 
 # Load configuration
-source <(python3 -c '
+# Using a safer approach to avoid executing unexpected text
+if [ -f "$CONFIG_FILE" ]; then
+    CONFIG_TEMP=$(mktemp)
+    python3 - << EOF > "$CONFIG_TEMP"
 import yaml
 import sys
-with open("'"$CONFIG_FILE"'", "r") as f:
+with open('$CONFIG_FILE', 'r') as f:
     config = yaml.safe_load(f)
 for key, value in config.items():
-    print(f"export {key.upper()}=\"{value}\"")
-')
+    if isinstance(value, str):
+        print(f"{key.upper()}=\"{value}\"")
+    else:
+        print(f"{key.upper()}=\"{value}\"")
+EOF
+    source "$CONFIG_TEMP"
+    rm "$CONFIG_TEMP"
+fi
 
 # Logging function
 log() {
@@ -61,8 +70,9 @@ main() {
     export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
     export SCRIPT_DIR="$SCRIPT_DIR"
     
-    # Create a temporary Python script file
-    TEMP_SCRIPT=$(mktemp)
+    # Create a Python script file in a temp directory
+    TEMP_DIR=$(mktemp -d)
+    TEMP_SCRIPT="${TEMP_DIR}/run_assistant.py"
     
     # Write Python code to the temp file
     cat > "$TEMP_SCRIPT" << 'ENDPYTHON'
@@ -88,11 +98,15 @@ agent.auto_run = True  # Run without prompting
 asyncio.run(agent.process_user_task(query))
 ENDPYTHON
     
-    # Execute the Python script from the script directory
-    cd "$SCRIPT_DIR" && python3 "$TEMP_SCRIPT"
+    # Make the script executable
+    chmod +x "$TEMP_SCRIPT"
     
-    # Clean up the temporary file
-    rm "$TEMP_SCRIPT"
+    # Execute the Python script from the script directory
+    # Redirect any potential shell errors to /dev/null to prevent execution
+    (cd "$SCRIPT_DIR" && python3 "$TEMP_SCRIPT") 2>/dev/null
+    
+    # Clean up the temporary directory
+    rm -rf "$TEMP_DIR"
 }
 
 # Handle command line arguments

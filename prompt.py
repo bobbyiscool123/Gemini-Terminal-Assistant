@@ -155,7 +155,8 @@ def generate_command(task: str, config: Optional[Dict] = None) -> str:
             - Operating System: {platform}
             - Current Directory: {directory}
             
-            Return ONLY the command with no explanations or markdown formatting.
+            IMPORTANT: Return ONLY the raw command with NO explanations, no conversational text, and NO markdown formatting.
+            DO NOT start with phrases like "Here's", "Okay", "Sure", etc.
             Make the command safe and include proper error handling.
             """
             
@@ -176,10 +177,12 @@ def generate_command(task: str, config: Optional[Dict] = None) -> str:
             - Safe command execution
             - Clear output formatting
             
-            IMPORTANT: Return ONLY the raw command with NO explanations, markdown, or formatting.
+            IMPORTANT: Return ONLY the raw command with NO explanations, conversational prefixes, markdown, or formatting.
+            NEVER start responses with "Okay", "Sure", "Here's", or any other conversational text.
+            Return just the executable command.
             """
         else:
-            system_prompt = "Generate a terminal command for the given task. Return only the command."
+            system_prompt = "Generate a terminal command for the given task. Return only the raw command with no additional text."
             
         # Generate the command with just a single text prompt
         response = MODEL.generate_content(prompt)
@@ -189,12 +192,17 @@ def generate_command(task: str, config: Optional[Dict] = None) -> str:
         text = re.sub(r'```(?:bash|sh|cmd|powershell)?', '', text)
         text = re.sub(r'`', '', text)
         
+        # Remove conversational prefixes that could be interpreted as commands
+        text = re.sub(r'^(Sure[,.!]?|Okay[,.!]?|Here\'s|Here is|I\'ll|Certainly[,.!]?)\s+', '', text, flags=re.IGNORECASE)
+        
         # Remove any explanations or other text that doesn't look like a command
         lines = text.split('\n')
         for line in lines:
             line = line.strip()
             if line and not line.startswith('#') and not line.startswith('//'):
                 # Found what looks like a command
+                # Do one more cleanup to remove conversational language
+                line = re.sub(r'^(the command|you can use[:]?|try this[:]?|use[:]?)\s+', '', line, flags=re.IGNORECASE)
                 return line
                 
         # If we got here, we couldn't find a clear command in the response

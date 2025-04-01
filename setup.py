@@ -40,8 +40,8 @@ def check_python_version():
     print_color(f"Detected Python version: {version}", "blue")
     
     major, minor, patch = map(int, version.split("."))
-    if major != 3 or minor < 8:
-        print_color("Warning: Recommended Python version is 3.8 or newer", "yellow")
+    if major != 3 or minor < 7:
+        print_color("Warning: Recommended Python version is 3.7 or newer", "yellow")
         return False
     
     print_color(f"Python version {version} is suitable", "green")
@@ -131,41 +131,47 @@ def install_conda():
     
     return install_path
 
-def install_python_3_12_8(conda_path):
-    """Install Python 3.12.8 using conda"""
-    env_name = "py3128"
+def install_python(conda_path):
+    """Install Python 3.7+ using conda"""
+    env_name = "py3_compatible"
     
     # Check if environment already exists
     if check_conda_env_exists(env_name):
         print_color(f"Conda environment '{env_name}' already exists", "blue")
         
-        # Check if it has Python 3.12.8
-        if check_python_version_in_conda_env(env_name, "3.12.8"):
-            print_color(f"Python 3.12.8 is already installed in conda environment '{env_name}'", "green")
-            return env_name
-        else:
-            print_color(f"Environment '{env_name}' exists but doesn't have Python 3.12.8", "yellow")
-            # Ask user if they want to update or recreate
-            while True:
-                choice = input(f"Update environment '{env_name}' to Python 3.12.8? (y/n): ").lower().strip()
-                if choice in ["y", "yes"]:
-                    break
-                elif choice in ["n", "no"]:
-                    print_color(f"Skipping Python 3.12.8 installation", "yellow")
+        # Check if it has a compatible Python version
+        success, output = run_command(f"conda run -n {env_name} python --version", shell=True)
+        if success:
+            version_match = re.search(r"Python (\d+\.\d+\.\d+)", output)
+            if version_match:
+                version = version_match.group(1)
+                major, minor, _ = map(int, version.split('.'))
+                if major == 3 and minor >= 7:
+                    print_color(f"Python {version} is already installed in conda environment '{env_name}'", "green")
                     return env_name
-                print_color("Please enter 'y' or 'n'", "yellow")
+            
+        print_color(f"Environment '{env_name}' exists but doesn't have a compatible Python version", "yellow")
+        # Ask user if they want to update or recreate
+        while True:
+            choice = input(f"Update environment '{env_name}' to a compatible Python version? (y/n): ").lower().strip()
+            if choice in ["y", "yes"]:
+                break
+            elif choice in ["n", "no"]:
+                print_color(f"Skipping Python installation", "yellow")
+                return env_name
+            print_color("Please enter 'y' or 'n'", "yellow")
     
-    print_color("Installing Python 3.12.8 using conda...", "blue")
+    print_color("Installing Python 3.7+ using conda...", "blue")
     
     conda_bin = os.path.join(conda_path, "bin", "conda") if conda_path else "conda"
     
-    # Create a new environment with Python 3.12.8
-    success, _ = run_command(f"{conda_bin} create -n {env_name} python=3.12.8 -y", shell=True)
+    # Create a new environment with Python 3.7+
+    success, _ = run_command(f"{conda_bin} create -n {env_name} python=3.7 -y", shell=True)
     if not success:
         print_color("Failed to create conda environment", "red")
         return False
     
-    print_color(f"Python 3.12.8 installed in conda environment '{env_name}'", "green")
+    print_color(f"Python 3.7+ installed in conda environment '{env_name}'", "green")
     return env_name
 
 def setup_virtualenv(conda_path, env_name):
@@ -178,12 +184,13 @@ def setup_virtualenv(conda_path, env_name):
         
         # Verify Python version in this venv
         version = platform.python_version()
-        if version.startswith("3.12."):
+        major, minor, _ = map(int, version.split('.'))
+        if major == 3 and minor >= 7:
             print_color(f"Current virtual environment has Python {version}", "green")
             print_color("Using current virtual environment", "green")
             return True
         else:
-            print_color(f"Current virtual environment has Python {version}, not 3.12.x", "red")
+            print_color(f"Current virtual environment has Python {version}, not 3.7+", "red")
             print_color("Please deactivate the current virtual environment and try again", "red")
             return False
     
@@ -193,20 +200,28 @@ def setup_virtualenv(conda_path, env_name):
         # Check if the venv has the right Python version
         venv_python = os.path.join(venv_path, "bin", "python")
         success, output = run_command(f"{venv_python} --version", shell=True)
-        if success and "3.12." in output:
-            print_color(f"Virtual environment already exists with Python {output.strip()}", "green")
-            
-            # Ask if user wants to recreate it
-            while True:
-                choice = input("Recreate virtual environment? (y/n): ").lower().strip()
-                if choice in ["y", "yes"]:
-                    print_color(f"Removing existing virtual environment at {venv_path}...", "yellow")
+        if success:
+            version_match = re.search(r"Python (\d+\.\d+\.\d+)", output)
+            if version_match:
+                version = version_match.group(1)
+                major, minor, _ = map(int, version.split('.'))
+                if major == 3 and minor >= 7:
+                    print_color(f"Virtual environment already exists with Python {version}", "green")
+                    
+                    # Ask if user wants to recreate it
+                    while True:
+                        choice = input("Recreate virtual environment? (y/n): ").lower().strip()
+                        if choice in ["y", "yes"]:
+                            print_color(f"Removing existing virtual environment at {venv_path}...", "yellow")
+                            shutil.rmtree(venv_path)
+                            break
+                        elif choice in ["n", "no"]:
+                            print_color("Using existing virtual environment", "green")
+                            return True
+                        print_color("Please enter 'y' or 'n'", "yellow")
+                else:
+                    print_color(f"Existing virtual environment has wrong Python version. Recreating...", "yellow")
                     shutil.rmtree(venv_path)
-                    break
-                elif choice in ["n", "no"]:
-                    print_color("Using existing virtual environment", "green")
-                    return True
-                print_color("Please enter 'y' or 'n'", "yellow")
         else:
             print_color(f"Existing virtual environment has wrong Python version. Recreating...", "yellow")
             shutil.rmtree(venv_path)
@@ -462,14 +477,16 @@ def main():
         print_color("Running in a virtual environment", "yellow")
         print_color("Your current Python version is: " + platform.python_version(), "blue")
         
-        if not platform.python_version().startswith("3.12."):
-            print_color("Warning: Current virtual environment does not have Python 3.12.x", "red")
+        version = platform.python_version()
+        major, minor, _ = map(int, version.split('.'))
+        if not (major == 3 and minor >= 7):
+            print_color("Warning: Current virtual environment does not have Python 3.7+", "red")
             print_color("It is recommended to deactivate this virtual environment first.", "red")
             if not get_user_confirmation("Continue anyway?"):
                 print_color("Setup cancelled", "yellow")
                 sys.exit(0)
         else:
-            print_color("Your virtual environment is using Python 3.12.x, which is suitable.", "green")
+            print_color("Your virtual environment is using Python 3.7+, which is suitable.", "green")
             
             # Skip conda setup
             conda_path = None
@@ -515,10 +532,10 @@ def main():
             print_color("Failed to install conda. Please install it manually.", "red")
             sys.exit(1)
     
-    # Install Python 3.12.8
-    env_name = install_python_3_12_8(conda_path)
+    # Install Python 3.7+
+    env_name = install_python(conda_path)
     if not env_name:
-        print_color("Failed to install Python 3.12.8. Please install it manually.", "red")
+        print_color("Failed to install Python 3.7+. Please install it manually.", "red")
         sys.exit(1)
     
     # Setup virtual environment

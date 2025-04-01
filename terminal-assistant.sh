@@ -113,7 +113,7 @@ fi
 
 # Check Python version compatibility
 python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-if (( $(echo "$python_version < 3.8" | bc -l) )); then
+if ! command -v bc &> /dev/null || ! (( $(echo "$python_version >= 3.8" | bc -l) )); then
     log_message "Error: Python 3.8 or higher is required. Current version: $python_version"
     exit 1
 fi

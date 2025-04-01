@@ -63,7 +63,7 @@ if not GOOGLE_API_KEY:
 
 print("Configuring Gemini API...")
 genai.configure(api_key=GOOGLE_API_KEY)
-MODEL = genai.GenerativeModel('gemini-2.0-flash')  # Use Flash for faster responses
+MODEL = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')  # Use Gemini 2.5 Pro for best performance
 
 # Import agent utilities if available
 try:
@@ -73,7 +73,21 @@ except ImportError:
     HAS_AGENT_UTILS = False
 
 # Import MCP server
-from mcp_server import mcp
+try:
+    from mcp_server import MCPServer
+    mcp = MCPServer()
+    HAS_MCP = True
+except ImportError:
+    HAS_MCP = False
+    print("Warning: MCP server not found. Some functionality may be limited.")
+
+# Import prompt manager
+try:
+    from prompt import prompt_manager
+    HAS_PROMPT_MANAGER = True
+except ImportError:
+    HAS_PROMPT_MANAGER = False
+    print("Warning: Prompt manager not found. Using default prompts.")
 
 class TaskState:
     """Represents the state of a task in the agent system"""
@@ -1587,6 +1601,20 @@ Return a JSON object with this structure:
         self.save_history()
         print(f"{Fore.GREEN}Thank you for using Agent Terminal Assistant!{Style.RESET_ALL}")
 
+    def generate_command(self, task: str, prompt: str = None) -> str:
+        """Generate a terminal command from a natural language request"""
+        try:
+            if HAS_PROMPT_MANAGER:
+                # Use prompt manager to generate command
+                from prompt import generate_command
+                return generate_command(task, self.config)
+            else:
+                # Use the class's command generation method
+                return self.get_command_generation(task)[0] if self.get_command_generation(task) else ""
+        except Exception as e:
+            print(f"Error generating command: {str(e)}")
+            return ""
+
 class TerminalAgent(AgentTerminal):
     """Backwards-compatible Terminal Agent class for async operations"""
     
@@ -1630,70 +1658,48 @@ class TerminalAgent(AgentTerminal):
             print(f"{task}")
             print(f"{Fore.CYAN}{'=' * 50}{Style.RESET_ALL}\n")
             
-            # Find the conda initialization in shell startup files
-            print(f"{Fore.BLUE}🔍 Finding conda initialization in shell config files...{Style.RESET_ALL}")
+            # Generate command using Gemini API
+            print(f"{Fore.BLUE}🧠 Analyzing task using Gemini API...{Style.RESET_ALL}")
             
-            # Check common shell config files
-            shell_files = [
-                "~/.bashrc",
-                "~/.bash_profile",
-                "~/.zshrc",
-                "~/.profile"
-            ]
+            # Get system context for better command generation
+            system_context = {
+                "current_directory": os.getcwd(),
+                "platform": platform.system(),
+                "user": os.getenv("USER") or os.getenv("USERNAME")
+            }
             
-            # Execute the search commands
-            found_conda_init = False
-            for shell_file in shell_files:
-                cmd = f"grep -n conda {shell_file} 2>/dev/null || echo 'Not found'"
-                result = await self._execute_command(cmd)
-                if "Not found" not in result["output"] and result["exit_code"] == 0:
-                    found_conda_init = True
-                    print(f"{Fore.GREEN}✅ Found conda initialization in {shell_file}:{Style.RESET_ALL}")
-                    print(f"{Fore.YELLOW}{result['output']}{Style.RESET_ALL}")
-                    
-                    # Edit the file to disable conda auto-init
-                    print(f"{Fore.BLUE}🔧 Modifying {shell_file} to disable conda auto-initialization...{Style.RESET_ALL}")
-                    
-                    # Create a backup
-                    backup_cmd = f"cp {shell_file} {shell_file}.bak"
-                    await self._execute_command(backup_cmd)
-                    print(f"{Fore.GREEN}✅ Created backup at {shell_file}.bak{Style.RESET_ALL}")
-                    
-                    # Add # at beginning of conda init lines
-                    sed_cmd = f"sed -i 's/^\\(.*conda.*\\)/# \\1/g' {shell_file}"
-                    edit_result = await self._execute_command(sed_cmd)
-                    
-                    if edit_result["exit_code"] == 0:
-                        print(f"{Fore.GREEN}✅ Successfully disabled conda auto-initialization{Style.RESET_ALL}")
-                        
-                        # Add a line to manually initialize conda when needed
-                        echo_cmd = f'echo "\n# To initialize conda manually, use: source ~/anaconda3/etc/profile.d/conda.sh" >> {shell_file}'
-                        await self._execute_command(echo_cmd)
-                        
-                        print(f"{Fore.GREEN}✅ Added instructions for manually initializing conda{Style.RESET_ALL}")
-                    else:
-                        print(f"{Fore.RED}❌ Failed to modify {shell_file}: {edit_result['error']}{Style.RESET_ALL}")
-                        self.task_errors.append(f"Failed to modify {shell_file}")
+            # Use prompt manager to generate command via Gemini
+            if HAS_PROMPT_MANAGER:
+                command_prompt = prompt_manager.format_command_prompt(task, system_context)
+                command = self.generate_command(task, command_prompt)
+            else:
+                # Fallback to simpler prompt if prompt manager not available
+                command = self.generate_command(task)
             
-            if not found_conda_init:
-                print(f"{Fore.YELLOW}⚠️ Could not find conda initialization in standard shell config files{Style.RESET_ALL}")
-                print(f"{Fore.BLUE}🔍 Checking system-wide initialization...{Style.RESET_ALL}")
+            if command:
+                print(f"{Fore.GREEN}🚀 Executing command:{Style.RESET_ALL}")
+                print(f"  {command}")
                 
-                system_files = [
-                    "/etc/profile",
-                    "/etc/bash.bashrc",
-                    "/etc/profile.d/conda.sh"
-                ]
+                # Execute the command
+                result = await self._execute_command(command)
                 
-                for sys_file in system_files:
-                    cmd = f"sudo grep -n conda {sys_file} 2>/dev/null || echo 'Not found'"
-                    result = await self._execute_command(cmd)
-                    if "Not found" not in result["output"] and result["exit_code"] == 0:
-                        print(f"{Fore.GREEN}✅ Found conda initialization in {sys_file}:{Style.RESET_ALL}")
-                        print(f"{Fore.YELLOW}{result['output']}{Style.RESET_ALL}")
-                        print(f"{Fore.YELLOW}⚠️ System-wide initialization requires admin privileges to modify{Style.RESET_ALL}")
-                        print(f"{Fore.YELLOW}⚠️ Please contact your system administrator{Style.RESET_ALL}")
-                        
+                # Display output
+                if result["output"]:
+                    print(f"\n{Fore.CYAN}📤 Output:{Style.RESET_ALL}")
+                    print(f"  {result['output']}")
+                
+                # Check result
+                if result["exit_code"] == 0:
+                    print(f"\n{Fore.GREEN}✅ Command completed successfully{Style.RESET_ALL}")
+                else:
+                    error_msg = f"Command failed with exit code {result['exit_code']}"
+                    print(f"\n{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
+                    self.task_errors.append(error_msg)
+            else:
+                error_msg = "Failed to generate command"
+                print(f"{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
+                self.task_errors.append(error_msg)
+            
             # Print task summary
             duration = (datetime.now() - self.task_start_time).total_seconds()
             print(f"\n{Fore.CYAN}{'=' * 50}{Style.RESET_ALL}")
@@ -1714,11 +1720,10 @@ class TerminalAgent(AgentTerminal):
             self._save_task_history()
             
         except Exception as e:
-            error_msg = f"Task processing failed: {str(e)}"
-            print(f"\n{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
-            if hasattr(self, 'task_errors'):
-                self.task_errors.append(error_msg)
-            self._save_task_history()
+            print(f"{Fore.RED}❌ Error processing task: {str(e)}{Style.RESET_ALL}")
+            self.task_errors.append(str(e))
+            import traceback
+            traceback.print_exc()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Gemini Terminal Assistant")
@@ -1729,5 +1734,5 @@ if __name__ == "__main__":
         agent = AgentTerminal()
         agent.run_one_shot(args.one_shot)
     else:
-    agent = AgentTerminal()
-    agent.run() 
+        agent = AgentTerminal()
+        agent.run() 

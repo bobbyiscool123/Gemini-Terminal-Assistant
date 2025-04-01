@@ -2,43 +2,136 @@
 """
 Model Context Protocol (MCP) Server
 Handles system operations and queries for the AI agent
-Modified for Linux/Termux/PRoot-distro environments
+Optimized for Gemini 2.5 Pro
 """
 import os
 import json
 import platform
 import subprocess
 import shutil
-from typing import Dict, List, Optional, Tuple
+import sys
+import yaml
+import logging
+from typing import Dict, List, Optional, Tuple, Any, Union
 from datetime import datetime
 from pathlib import Path
+from prompt import generate_command
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('mcp_server.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 class MCPServer:
     """Server to handle system operations and queries"""
     
-    def __init__(self):
+    def __init__(self, config_path: str = "config.yaml"):
+        """Initialize the MCP server with configuration."""
+        self.config = self._load_config(config_path)
+        self.setup_logging()
         self.system_info = self._get_system_info()
         self.package_managers = self._check_package_managers()
         self.drive_info = self._get_drive_info()
         self.common_dirs = self._get_common_dirs()
         
-    def _get_system_info(self) -> Dict:
-        """Get basic system information"""
-        return {
-            "os": platform.system(),
-            "os_release": platform.release(),
-            "os_version": platform.version(),
-            "architecture": platform.machine(),
-            "processor": platform.processor(),
-            "python_version": platform.python_version()
-        }
-    
+    def _load_config(self, config_path: str) -> Dict[str, Any]:
+        """Load configuration from YAML file."""
+        try:
+            with open(config_path, 'r') as f:
+                return yaml.safe_load(f)
+        except Exception as e:
+            logger.error(f"Failed to load config: {e}")
+            return {}
+
+    def setup_logging(self):
+        """Configure logging based on settings."""
+        log_config = self.config.get('logging', {})
+        log_level = getattr(logging, log_config.get('level', 'INFO').upper())
+        logging.getLogger().setLevel(log_level)
+
+    def process_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Process incoming requests and generate responses."""
+        try:
+            command_type = request.get('type')
+            parameters = request.get('parameters', {})
+            
+            if command_type == 'execute_command':
+                return self._execute_command(parameters)
+            elif command_type == 'get_system_info':
+                return self._get_system_info()
+            elif command_type == 'check_package':
+                return self._check_package(parameters.get('package_name'))
+            else:
+                return {'error': f'Unknown command type: {command_type}'}
+                
+        except Exception as e:
+            logger.error(f"Error processing request: {e}")
+            return {'error': str(e)}
+
+    def _execute_command(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a command using Gemini API."""
+        try:
+            command = generate_command(parameters.get('command', ''), self.config)
+            if not command:
+                return {'error': 'Failed to generate command'}
+                
+            # Execute the command
+            result = os.system(command)
+            return {
+                'success': result == 0,
+                'command': command,
+                'exit_code': result
+            }
+        except Exception as e:
+            logger.error(f"Error executing command: {e}")
+            return {'error': str(e)}
+
+    def _get_system_info(self) -> Dict[str, Any]:
+        """Get system information using Gemini API."""
+        try:
+            command = generate_command("get system information", self.config)
+            if not command:
+                return {'error': 'Failed to generate system info command'}
+                
+            result = os.system(command)
+            return {
+                'success': result == 0,
+                'command': command,
+                'exit_code': result
+            }
+        except Exception as e:
+            logger.error(f"Error getting system info: {e}")
+            return {'error': str(e)}
+
+    def _check_package(self, package_name: str) -> Dict[str, Any]:
+        """Check if a package is installed using Gemini API."""
+        try:
+            command = generate_command(f"check if package {package_name} is installed", self.config)
+            if not command:
+                return {'error': 'Failed to generate package check command'}
+                
+            result = os.system(command)
+            return {
+                'success': result == 0,
+                'command': command,
+                'exit_code': result,
+                'package_name': package_name
+            }
+        except Exception as e:
+            logger.error(f"Error checking package: {e}")
+            return {'error': str(e)}
+
     def _check_package_managers(self) -> Dict:
         """Check for installed package managers"""
         managers = {
             "apt": False,
             "pip": False,
-            "conda": False,
             "termux": False
         }
         
@@ -75,23 +168,7 @@ class MCPServer:
                     subprocess.run([path, "--version"], capture_output=True, check=True)
                     managers["pip"] = True
                     break
-        except:
-                continue
-                
-        # Check conda with multiple possible paths
-        conda_paths = [
-            os.path.expanduser("~/anaconda3/bin/conda"),
-            os.path.expanduser("~/miniconda3/bin/conda"),
-            "/usr/local/bin/conda",
-            "/opt/conda/bin/conda"
-        ]
-        for path in conda_paths:
-            try:
-                if os.path.exists(path):
-                    subprocess.run([path, "--version"], capture_output=True, check=True)
-                    managers["conda"] = True
-                    break
-        except:
+            except:
                 continue
             
         return managers
@@ -200,108 +277,86 @@ class MCPServer:
         }
         
         try:
-            for root, _, files in os.walk(path):
-                for file in files:
-                    try:
-                        file_path = os.path.join(root, file)
-                        file_size = os.path.getsize(file_path)
-                        file_ext = os.path.splitext(file)[1].lower()
-                        
-                        analysis["total_files"] += 1
-                        analysis["total_size"] += file_size
-                        
-                        # Count file types
-                        if file_ext:
-                            analysis["file_types"][file_ext] = analysis["file_types"].get(file_ext, 0) + 1
-                            
-                        # Suggest folders based on file types
-                        if file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
-                            analysis["suggested_folders"]["Images"] = analysis["suggested_folders"].get("Images", 0) + 1
-                        elif file_ext in ['.mp4', '.avi', '.mov', '.wmv']:
-                            analysis["suggested_folders"]["Videos"] = analysis["suggested_folders"].get("Videos", 0) + 1
-                        elif file_ext in ['.mp3', '.wav', '.flac']:
-                            analysis["suggested_folders"]["Music"] = analysis["suggested_folders"].get("Music", 0) + 1
-                        elif file_ext in ['.pdf', '.doc', '.docx', '.txt']:
-                            analysis["suggested_folders"]["Documents"] = analysis["suggested_folders"].get("Documents", 0) + 1
-                        elif file_ext in ['.zip', '.rar', '.7z']:
-                            analysis["suggested_folders"]["Archives"] = analysis["suggested_folders"].get("Archives", 0) + 1
-                        else:
-                            analysis["suggested_folders"]["Others"] = analysis["suggested_folders"].get("Others", 0) + 1
-                            
-                    except:
-                        continue
-                        
+            file_structure = self.get_folder_structure(path, max_depth=1)
+            analysis["total_files"] = len(file_structure["files"])
+            
+            # Analyze file types
+            for file in file_structure["files"]:
+                analysis["total_size"] += file["size"]
+                ext = file["extension"]
+                if ext not in analysis["file_types"]:
+                    analysis["file_types"][ext] = {"count": 0, "size": 0}
+                analysis["file_types"][ext]["count"] += 1
+                analysis["file_types"][ext]["size"] += file["size"]
+            
+            # Suggest folders based on file types
+            for ext, info in analysis["file_types"].items():
+                if ext in [".jpg", ".jpeg", ".png", ".gif"]:
+                    analysis["suggested_folders"]["Images"] = analysis["suggested_folders"].get("Images", 0) + info["count"]
+                elif ext in [".mp3", ".wav", ".flac"]:
+                    analysis["suggested_folders"]["Music"] = analysis["suggested_folders"].get("Music", 0) + info["count"]
+                elif ext in [".mp4", ".avi", ".mov"]:
+                    analysis["suggested_folders"]["Videos"] = analysis["suggested_folders"].get("Videos", 0) + info["count"]
+                elif ext in [".pdf", ".doc", ".docx", ".txt"]:
+                    analysis["suggested_folders"]["Documents"] = analysis["suggested_folders"].get("Documents", 0) + info["count"]
+                elif ext in [".py", ".js", ".java", ".cpp"]:
+                    analysis["suggested_folders"]["Code"] = analysis["suggested_folders"].get("Code", 0) + info["count"]
         except Exception as e:
             print(f"Error analyzing files in {path}: {str(e)}")
-            
+        
         return analysis
     
     def create_folder(self, path: str) -> bool:
-        """Create a folder if it doesn't exist"""
+        """Create a folder at the specified path"""
         try:
             os.makedirs(path, exist_ok=True)
             return True
         except Exception as e:
-            print(f"Error creating folder {path}: {str(e)}")
+            print(f"Error creating folder at {path}: {str(e)}")
             return False
     
     def move_file(self, source: str, destination: str) -> bool:
-        """Move a file to a new location"""
+        """Move a file from source to destination"""
         try:
             shutil.move(source, destination)
             return True
         except Exception as e:
-            print(f"Error moving file {source}: {str(e)}")
+            print(f"Error moving file from {source} to {destination}: {str(e)}")
             return False
     
     def delete_empty_folders(self, path: str) -> List[str]:
-        """Delete empty folders and return list of deleted folders"""
+        """Delete empty folders in the specified path"""
         deleted = []
+        
         try:
             for root, dirs, files in os.walk(path, topdown=False):
                 for dir_name in dirs:
                     dir_path = os.path.join(root, dir_name)
-                    if not os.listdir(dir_path):
-                        try:
-                            os.rmdir(dir_path)
-                            deleted.append(dir_path)
-                        except:
-                            continue
+                    if not os.listdir(dir_path):  # Check if directory is empty
+                        os.rmdir(dir_path)
+                        deleted.append(dir_path)
         except Exception as e:
             print(f"Error deleting empty folders in {path}: {str(e)}")
+        
         return deleted
     
     def install_package_manager(self, manager: str) -> bool:
-        """Install a package manager if not present"""
-        if manager == "pip":
+        """Install a package manager if it's not already installed"""
+        if manager == "pip" and not self.package_managers.get("pip", False):
             try:
-                subprocess.run(["apt", "install", "-y", "python3-pip"], check=True)
-                return True
-            except Exception as e:
-                print(f"Error installing pip: {str(e)}")
+                if self.package_managers.get("apt", False):
+                    result = subprocess.run(["apt", "install", "-y", "python3-pip"], capture_output=True, text=True, check=True)
+                    return "successfully" in result.stdout.lower()
+                else:
+                    return False
+            except:
                 return False
-        elif manager == "conda":
-            try:
-                # Download and install miniconda
-                subprocess.run(["wget", "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh", "-O", "/tmp/miniconda.sh"], check=True)
-                subprocess.run(["bash", "/tmp/miniconda.sh", "-b", "-p", "$HOME/miniconda"], check=True)
-                return True
-            except Exception as e:
-                print(f"Error installing conda: {str(e)}")
-                return False
-        else:
-            print(f"Package manager '{manager}' not supported for installation")
-        return False
+        
+        return True  # Already installed or unsupported manager
     
     def get_package_info(self, package_name: str) -> Dict:
-        """Get information about an installed package"""
-        info = {
-            "name": package_name,
-            "installed": False,
-            "version": None,
-            "install_location": None,
-            "description": None
-        }
+        """Get information about a package"""
+        info = {"name": package_name, "installed": False, "version": None, "location": None}
         
         # Check pip package
         try:
@@ -312,32 +367,49 @@ class MCPServer:
                     if line.startswith("Version:"):
                         info["version"] = line.split(":", 1)[1].strip()
                     elif line.startswith("Location:"):
-                        info["install_location"] = line.split(":", 1)[1].strip()
-                    elif line.startswith("Summary:"):
-                        info["description"] = line.split(":", 1)[1].strip()
-            except:
-                pass
-                
+                        info["location"] = line.split(":", 1)[1].strip()
+        except:
+            pass
+        
         # Check apt package
-        if not info["installed"]:
+        if not info["installed"] and self.package_managers.get("apt", False):
             try:
                 result = subprocess.run(["apt", "show", package_name], capture_output=True, text=True)
-                if result.returncode == 0:
+                if result.returncode == 0 and "installed" in result.stdout.lower():
                     info["installed"] = True
                     for line in result.stdout.split("\n"):
                         if line.startswith("Version:"):
                             info["version"] = line.split(":", 1)[1].strip()
-                        elif line.startswith("Description:"):
-                            info["description"] = line.split(":", 1)[1].strip()
             except:
                 pass
-                
+        
         return info
 
-# Create global instance
-mcp = MCPServer() 
+def main():
+    """Main entry point for the MCP server."""
+    try:
+        server = MCPServer()
+        
+        # Read input from stdin
+        while True:
+            try:
+                line = sys.stdin.readline()
+                if not line:
+                    break
+                    
+                request = json.loads(line)
+                response = server.process_request(request)
+                
+                # Write response to stdout
+                print(json.dumps(response), flush=True)
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON input: {e}")
+                print(json.dumps({'error': 'Invalid JSON input'}), flush=True)
+                
+    except Exception as e:
+        logger.error(f"Server error: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    # Example usage
-    print(json.dumps(mcp.system_info, indent=2))
-    print(json.dumps(mcp.package_managers, indent=2)) 
+    main() 

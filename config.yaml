@@ -30,7 +30,7 @@ ui_refresh_rate: 0.5
 use_advanced_browser: true
 use_persistent_sessions: true
 # New configuration options
-command_verification_level: "medium"
+command_verification_level: "high"
 ai_response_style: "concise"
 auto_update_check: true
 custom_command_aliases: {}
@@ -91,3 +91,98 @@ timeout: 30  # Command execution timeout in seconds
 use_rich_formatting: true  # Use rich text formatting if available
 show_subtask_details: true  # Show detailed information about subtasks
 progress_bar: true  # Show progress bar for long-running tasks
+
+# Prompt templates for Gemini 2.5 Pro
+prompt_templates:
+  command_generation: |
+    Generate a command to: {task}
+    Requirements:
+    - Must be safe and appropriate for the system
+    - Should handle errors gracefully
+    - Should provide clear output
+    - Should be compatible with the current shell
+  
+  task_planning: |
+    Create a plan for: {task}
+    Steps:
+    1. Analyze the task requirements
+    2. Identify required commands
+    3. Consider error cases
+    4. Plan output handling
+  
+  error_analysis: |
+    Analyze the error: {error}
+    Provide:
+    1. Error description
+    2. Possible causes
+    3. Suggested solutions
+  
+  file_analysis: |
+    Analyze the file: {file_path}
+    Provide:
+    1. File type and purpose
+    2. Key components
+    3. Dependencies
+    4. Potential issues
+
+# System prompts for different contexts
+system_prompts:
+  command_generation: |
+    You are a command generation expert.
+    Focus on:
+    - System compatibility
+    - Security best practices
+    - Error handling
+    - Clear output formatting
+  
+  task_planning: |
+    You are a task planning expert.
+    Focus on:
+    - Breaking down complex tasks
+    - Identifying dependencies
+    - Error prevention
+    - Resource optimization
+  
+  error_analysis: |
+    You are an error analysis expert.
+    Focus on:
+    - Root cause identification
+    - Solution verification
+    - Prevention strategies
+    - System-specific considerations
+  
+  file_analysis: |
+    You are a file analysis expert.
+    Focus on:
+    - Code structure
+    - Dependencies
+    - Security considerations
+    - Performance implications
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  file: "terminal_assistant.log"
+  max_size: 10485760  # 10MB
+  backup_count: 5
+
+# System Command Templates
+system_commands:
+  get_system_info: |
+    Generate a command to get system information including:
+    - Operating system details
+    - System architecture
+    - Memory usage
+    - Disk space
+    - CPU information
+    Use appropriate system commands based on the operating system.
+
+  check_package: |
+    Generate a command to check if a package is installed.
+    Consider different package managers (apt, pip, npm, etc.).
+    Return appropriate command based on the package name and system.
+
+  execute_command: |
+    Generate a command to execute the user's request.
+    Ensure the command is safe and appropriate for the system.
+    Include proper error handling and output redirection.

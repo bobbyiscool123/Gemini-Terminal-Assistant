@@ -1,0 +1,131 @@
+# Gemini Terminal Assistant User Guide
+
+## Introduction
+
+Gemini Terminal Assistant is a powerful AI-powered tool that helps you perform tasks directly in your terminal. Instead of remembering complex command syntax, you can simply describe what you want to do in natural language, and the assistant will help you accomplish it.
+
+## Installation
+
+To install the Gemini Terminal Assistant:
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/Gemini-Terminal-Assistant.git
+   cd Gemini-Terminal-Assistant
+   ```
+
+2. Run the setup script:
+   ```bash
+   python setup.py
+   ```
+
+3. Add your Google API key to the `.env` file:
+   ```bash
+   echo "GOOGLE_API_KEY=your_api_key_here" > .env
+   ```
+
+4. Source your shell configuration to update your PATH:
+   ```bash
+   source ~/.bashrc  # or ~/.zshrc if using zsh
+   ```
+
+## Basic Usage
+
+To use the assistant, simply run the `terminal-assistant` command followed by your request:
+
+```bash
+terminal-assistant "list all files in the current directory"
+```
+
+The assistant will:
+1. Analyze your request
+2. Plan the necessary steps
+3. Execute the appropriate commands
+4. Show you the results
+
+## Example Tasks
+
+Here are some example tasks you can ask the assistant to perform:
+
+### File Operations
+- `terminal-assistant "find all PDF files in my Documents folder"`
+- `terminal-assistant "create a backup of my project directory"`
+- `terminal-assistant "show the largest files in this directory"`
+
+### System Information
+- `terminal-assistant "show system resources usage"`
+- `terminal-assistant "check disk space"`
+- `terminal-assistant "show network connections"`
+
+### Package Management
+- `terminal-assistant "install the requests package for Python"`
+- `terminal-assistant "check if nodejs is installed"`
+- `terminal-assistant "update all system packages"`
+
+### Text Processing
+- `terminal-assistant "count the number of lines in all Python files"`
+- `terminal-assistant "find all occurrences of 'TODO' in my code"`
+- `terminal-assistant "extract email addresses from this log file"`
+
+## Advanced Features
+
+### Command Explanation
+
+The assistant will explain what it's doing before executing any commands, so you can learn how the commands work.
+
+### Task Planning
+
+For complex requests, the assistant will break down the task into smaller steps and execute them in sequence.
+
+### Command History
+
+Your command history is saved, making it easy to repeat or modify previous tasks.
+
+## Troubleshooting
+
+### Common Issues
+
+1. **API Key Issues**
+   - Ensure your Google API key is correctly set in the `.env` file
+   - Verify that your API key has access to the Gemini models
+
+2. **Permission Issues**
+   - Make sure the `terminal-assistant.sh` script is executable
+   - Some commands may require sudo privileges
+
+3. **Environment Problems**
+   - If you get "command not found", ensure your PATH includes the assistant
+   - Virtual environment issues can usually be fixed by running setup.py again
+
+### Getting Help
+
+For additional help, you can run:
+
+```bash
+terminal-assistant --help
+```
+
+Or ask the assistant directly:
+
+```bash
+terminal-assistant "how do I use terminal assistant for file management?"
+```
+
+## Customization
+
+You can customize the assistant by editing the `config.yaml` file. This allows you to:
+
+- Adjust the verbosity of responses
+- Modify the system prompts
+- Add custom command templates
+- Configure safety settings
+
+## Uninstallation
+
+If you need to uninstall the assistant:
+
+```bash
+python uninstall.py
+```
+
+This will remove the terminal-assistant command and clean up associated files. 

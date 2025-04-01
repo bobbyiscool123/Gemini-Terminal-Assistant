@@ -19,8 +19,12 @@ check_python_version() {
         exit 1
     fi
     
+    # Use Python itself to check version
     python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-    if (( $(echo "$python_version < 3.7" | bc -l) )); then
+    major_version=$(python3 -c 'import sys; print(sys.version_info[0])')
+    minor_version=$(python3 -c 'import sys; print(sys.version_info[1])')
+    
+    if [ "$major_version" -lt 3 ] || ([ "$major_version" -eq 3 ] && [ "$minor_version" -lt 7 ]); then
         echo "Error: Python 3.7 or higher is required (found $python_version)"
         exit 1
     fi

@@ -41,6 +41,7 @@ chromedriver.log
 msedgedriver.log
 *.tmp
 .pytest_cache/
+.github-release-notes/
 
 # Selenium and browser data
 drivers/

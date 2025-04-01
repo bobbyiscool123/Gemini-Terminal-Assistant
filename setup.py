@@ -10,6 +10,7 @@ import subprocess
 import platform
 import venv
 from pathlib import Path
+import site
 
 # Get script's directory (app base directory)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -142,32 +143,27 @@ def add_to_system_path():
     print("Adding application directory to system PATH...")
     
     try:
-        # Check if we have admin rights
-        admin_check = subprocess.run("net session >nul 2>&1", shell=True)
-        is_admin = (admin_check.returncode == 0)
-        
-        if is_admin:
-            # System-wide PATH (requires admin)
-            cmd = f'setx /M PATH "%PATH%;{BASE_DIR}"'
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            
-            if result.returncode == 0:
-                print("Successfully added to system PATH")
-                return True
-            else:
-                print("Failed to add to system PATH, trying user PATH instead")
-        
-        # User PATH (doesn't require admin)
+        # First try using setx (traditional method)
         cmd = f'setx PATH "%PATH%;{BASE_DIR}"'
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         
         if result.returncode == 0:
-            print("Successfully added to user PATH")
+            print("Successfully added to user PATH using setx")
             return True
         else:
-            print("Failed to add to PATH")
-            print(f"Error: {result.stderr}")
-            return False
+            print("Setx command failed, trying PowerShell method instead")
+            
+            # Fall back to PowerShell method
+            ps_cmd = f'powershell -Command "[Environment]::SetEnvironmentVariable(\'Path\', [Environment]::GetEnvironmentVariable(\'Path\', \'User\') + \';{BASE_DIR}\', [EnvironmentVariableTarget]::User)"'
+            ps_result = subprocess.run(ps_cmd, shell=True, capture_output=True, text=True)
+            
+            if ps_result.returncode == 0:
+                print("Successfully added to user PATH using PowerShell")
+                return True
+            else:
+                print("Failed to add to PATH using PowerShell")
+                print(f"Error: {ps_result.stderr}")
+                return False
     except Exception as e:
         print(f"Error modifying PATH: {e}")
         return False
@@ -215,9 +211,17 @@ def create_batch_file():
         f.write('    call "%SCRIPT_DIR%\\venv\\Scripts\\activate.bat"\n')
         f.write(')\n\n')
         
-        f.write(':: Run the agent\n')
-        f.write('cd /d "%SCRIPT_DIR%"\n')
-        f.write('python "%AGENT_SCRIPT%"\n\n')
+        f.write(':: Run the agent with all passed arguments\n')
+        f.write('cd /d "%SCRIPT_DIR%"\n\n')
+        
+        f.write(':: Check if there are any command line arguments\n')
+        f.write('if "%~1"=="" (\n')
+        f.write('    :: No arguments - run in interactive mode\n')
+        f.write('    python "%AGENT_SCRIPT%"\n')
+        f.write(') else (\n')
+        f.write('    :: Arguments provided - pass them directly\n')
+        f.write('    python "%AGENT_SCRIPT%" %*\n')
+        f.write(')\n\n')
         
         f.write(':: Deactivate the virtual environment\n')
         f.write('call deactivate\n\n')
@@ -247,16 +251,29 @@ def main():
     
     # Add the directory to system PATH
     if platform.system() == "Windows":
-        add_to_system_path()
+        path_added = add_to_system_path()
+        if path_added:
+            print("Directory added to PATH. You can now run 'terminal-assistant' from any command prompt.")
+            print("You may need to restart your command prompt for the changes to take effect.")
+        else:
+            print("Could not add directory to PATH automatically.")
+            print(f"To add it manually, run: setx PATH \"%PATH%;{BASE_DIR}\"")
+    else:
+        # Guidance for Unix-based systems
+        print("\nTo make terminal-assistant available from anywhere on Unix-based systems:")
+        print(f"1. Add the following line to your ~/.bashrc or ~/.zshrc:")
+        print(f"   export PATH=\"$PATH:{BASE_DIR}\"")
+        print("2. Run 'source ~/.bashrc' or 'source ~/.zshrc'")
+        print("3. Or create a symbolic link:")
+        print(f"   sudo ln -s {os.path.join(BASE_DIR, 'terminal-assistant.py')} /usr/local/bin/terminal-assistant")
     
-    print_header("Setup Complete!")
+    print_header("Setup Complete")
     print("You can now run the assistant using:")
-    print("1. From any terminal (after restart): terminal-assistant")
-    print(f"2. Direct path: {os.path.join(BASE_DIR, 'terminal-assistant.bat')}")
-    print("3. From project directory: .\\terminal-assistant.bat")
+    print("1. ./terminal-assistant.bat (from this directory)")
+    if platform.system() == "Windows":
+        print("2. terminal-assistant (from any directory, if PATH was updated successfully)")
     
-    print("\nNOTE: You may need to restart your terminal or computer")
-    print("      for the PATH changes to take effect.")
+    print("\nEnsure you've set your API key in the .env file before running the assistant.")
     
     return 0
 

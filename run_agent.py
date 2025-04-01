@@ -33,11 +33,32 @@ def check_api_key():
 
 def parse_arguments():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="AI Terminal Assistant")
-    parser.add_argument("--execute", type=str, help="Execute a command and exit", default=None)
-    # Parse known args only to avoid problems with special characters in commands
-    args, _ = parser.parse_known_args()
-    return args
+    # Check for direct arguments (without using argparse)
+    # This handles cases where the batch file passes arguments directly
+    if len(sys.argv) > 1:
+        # If first arg is --execute, use argparse to parse it
+        if sys.argv[1].startswith('--execute='):
+            parser = argparse.ArgumentParser(description="AI Terminal Assistant")
+            parser.add_argument("--execute", type=str, help="Execute a command and exit", default=None)
+            # Parse known args only to avoid problems with special characters in commands
+            args, _ = parser.parse_known_args()
+            return args
+        else:
+            # Otherwise, treat all args as a command to execute
+            command = ' '.join(sys.argv[1:])
+            # Create a custom args object
+            class Args:
+                pass
+            args = Args()
+            args.execute = command
+            return args
+    else:
+        # No arguments, run in interactive mode
+        class Args:
+            pass
+        args = Args()
+        args.execute = None
+        return args
 
 def main():
     """Main entry point"""
@@ -47,6 +68,8 @@ def main():
     # Only print startup message in interactive mode
     if not execute_mode:
         print("Starting Agent Terminal Assistant...")
+    else:
+        print(f"Running command: {args.execute}")
     
     # Special handling for help/version only - everything else goes to the AI
     if execute_mode:

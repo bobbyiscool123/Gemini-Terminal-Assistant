@@ -53,25 +53,24 @@ main() {
     # Add to history
     add_to_history "$query"
     
-    # Process through Gemini API
+    # Pass the query through an environment variable
+    export TA_USER_QUERY="$query"
+    
+    # Use the full agent_terminal.py with rich UI and task breakdown
     python3 -c "
 import sys
-import yaml
-from prompt import generate_command
+import os
+import asyncio
+from agent_terminal import AgentTerminal
 
-# Load configuration
-with open('$CONFIG_FILE', 'r') as f:
-    config = yaml.safe_load(f)
+# Get query from environment variable
+query = os.environ.get('TA_USER_QUERY', '')
 
-# Generate command using Gemini
-command = generate_command('$query', config)
-print(command)
-" | while read -r command; do
-        if [ -n "$command" ]; then
-            echo "Executing: $command"
-            eval "$command"
-        fi
-    done
+# Create agent and run task
+agent = AgentTerminal()
+agent.auto_run = True  # Run without prompting
+asyncio.run(agent.process_user_task(query))
+"
 }
 
 # Handle command line arguments

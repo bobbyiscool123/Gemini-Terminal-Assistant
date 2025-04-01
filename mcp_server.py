@@ -38,30 +38,62 @@ class MCPServer:
         managers = {
             "apt": False,
             "pip": False,
-            "conda": False
+            "conda": False,
+            "termux": False
         }
         
-        # Check apt
+        # Check for Termux environment
         try:
-            subprocess.run(["apt", "--version"], capture_output=True, check=True)
-            managers["apt"] = True
+            if os.path.exists("/data/data/com.termux"):
+                managers["termux"] = True
         except:
             pass
             
-        # Check pip
-        try:
-            subprocess.run(["pip", "--version"], capture_output=True, check=True)
-            managers["pip"] = True
-        except:
-            pass
-            
-        # Check conda
-        try:
-            subprocess.run(["conda", "--version"], capture_output=True, check=True)
-            managers["conda"] = True
-        except:
-            pass
-            
+        # Check apt with multiple possible paths
+        apt_paths = ["/usr/bin/apt", "/bin/apt", "/data/data/com.termux/files/usr/bin/apt"]
+        for path in apt_paths:
+            try:
+                if os.path.exists(path):
+                    subprocess.run([path, "--version"], capture_output=True, check=True)
+                    managers["apt"] = True
+                    break
+            except:
+                continue
+                
+        # Check pip with multiple possible paths
+        pip_paths = [
+            "/usr/bin/pip",
+            "/usr/bin/pip3",
+            "/usr/local/bin/pip",
+            "/usr/local/bin/pip3",
+            "/data/data/com.termux/files/usr/bin/pip",
+            "/data/data/com.termux/files/usr/bin/pip3"
+        ]
+        for path in pip_paths:
+            try:
+                if os.path.exists(path):
+                    subprocess.run([path, "--version"], capture_output=True, check=True)
+                    managers["pip"] = True
+                    break
+            except:
+                continue
+                
+        # Check conda with multiple possible paths
+        conda_paths = [
+            os.path.expanduser("~/anaconda3/bin/conda"),
+            os.path.expanduser("~/miniconda3/bin/conda"),
+            "/usr/local/bin/conda",
+            "/opt/conda/bin/conda"
+        ]
+        for path in conda_paths:
+            try:
+                if os.path.exists(path):
+                    subprocess.run([path, "--version"], capture_output=True, check=True)
+                    managers["conda"] = True
+                    break
+            except:
+                continue
+                
         return managers
     
     def _get_drive_info(self) -> Dict:

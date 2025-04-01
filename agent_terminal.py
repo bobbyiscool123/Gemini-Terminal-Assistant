@@ -21,6 +21,7 @@ import random
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple, Any, Union, Set
 from dotenv import load_dotenv
+import asyncio
 
 # For colorized output
 try:
@@ -423,7 +424,7 @@ Return a JSON object with this structure:
 ## CONTEXT INFORMATION
 - User Task: {task}
 - Current Directory: {self.context.current_directory}
-- OS: {platform.system()} {platform.release()}
+- OS: Proot-Distro Ubuntu (Linux)
 - System Drives: {json.dumps(drive_info, indent=2)}
 - Previous Commands: {', '.join([cmd.get('command', '') for cmd in self.context.command_history[-5:]])}
 
@@ -503,6 +504,35 @@ Return a JSON object with this structure:
                 }
             }
     
+    def display_task_plan(self, task_plan: Dict):
+        """Display task plan in a user-friendly format"""
+        print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}📋 Task Summary:{Style.RESET_ALL}")
+        print(f"{task_plan['task_summary']}")
+        print(f"\n{Fore.YELLOW}⏱️ Estimated Steps: {task_plan['estimated_steps']}{Style.RESET_ALL}")
+        
+        if task_plan.get('system_requirements'):
+            print(f"\n{Fore.BLUE}🔧 System Requirements:{Style.RESET_ALL}")
+            reqs = task_plan['system_requirements']
+            print(f"• Disk Space: {reqs.get('disk_space', 'Unknown')}")
+            print(f"• Memory: {reqs.get('memory', 'Unknown')}")
+            if reqs.get('dependencies'):
+                print(f"• Dependencies: {', '.join(reqs['dependencies'])}")
+        
+        print(f"\n{Fore.MAGENTA}📝 Execution Plan:{Style.RESET_ALL}")
+        for i, subtask in enumerate(task_plan['subtasks'], 1):
+            print(f"\n{Fore.CYAN}Step {i}: {subtask['description']}{Style.RESET_ALL}")
+            print(f"{Fore.WHITE}Approach: {subtask['approach']}{Style.RESET_ALL}")
+            if subtask.get('commands'):
+                print(f"{Fore.GREEN}Commands:{Style.RESET_ALL}")
+                for cmd in subtask['commands']:
+                    print(f"  • {cmd}")
+            if subtask.get('potential_issues'):
+                print(f"{Fore.YELLOW}Potential Issues: {subtask['potential_issues']}{Style.RESET_ALL}")
+            if subtask.get('required_resources'):
+                print(f"{Fore.BLUE}Required Resources: {', '.join(subtask['required_resources'])}{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}\n")
+
     def get_command_generation(self, task: str, subtask: str = None) -> List[str]:
         """Get AI generated commands for a specific task or subtask"""
         
@@ -610,6 +640,89 @@ Return ONLY the raw commands, one per line, with NO explanations, backticks, or 
                 return ["dir"]
             else:
                 return ["ls"]
+    
+    async def _execute_command(self, command: str) -> Dict[str, Any]:
+        """Execute a command and return its output."""
+        try:
+            # Add command to history
+            self.context.command_history.append({
+                "command": command,
+                "timestamp": datetime.now().isoformat(),
+                "status": "running"
+            })
+            
+            print(f"\n{Fore.CYAN}🚀 Executing command:{Style.RESET_ALL}")
+            print(f"{Fore.WHITE}  {command}{Style.RESET_ALL}")
+            
+            # Execute command with reduced timeout
+            process = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=self.context.current_directory
+            )
+            
+            # Wait for completion with reduced timeout
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
+            
+            # Get exit code
+            exit_code = process.returncode
+            
+            # Update command history
+            self.context.command_history[-1]["status"] = "completed"
+            self.context.command_history[-1]["exit_code"] = exit_code
+            self.context.command_history[-1]["output"] = stdout.decode() if stdout else ""
+            self.context.command_history[-1]["error"] = stderr.decode() if stderr else ""
+            
+            # Save command history
+            self.save_history()
+            
+            # Print output in a user-friendly way
+            if stdout:
+                print(f"\n{Fore.GREEN}📤 Output:{Style.RESET_ALL}")
+                for line in stdout.decode().splitlines():
+                    if line.strip():
+                        print(f"  {line}")
+            
+            if stderr:
+                print(f"\n{Fore.RED}⚠️ Errors:{Style.RESET_ALL}")
+                for line in stderr.decode().splitlines():
+                    if line.strip():
+                        print(f"  {line}")
+            
+            # Print status
+            if exit_code == 0:
+                print(f"\n{Fore.GREEN}✅ Command completed successfully{Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.RED}❌ Command failed with exit code {exit_code}{Style.RESET_ALL}")
+            
+            return {
+                "exit_code": exit_code,
+                "output": stdout.decode() if stdout else "",
+                "error": stderr.decode() if stderr else ""
+            }
+            
+        except asyncio.TimeoutError:
+            # Handle timeout
+            self.context.command_history[-1]["status"] = "timeout"
+            self.save_history()
+            print(f"\n{Fore.RED}⏰ Command timed out after 30 seconds{Style.RESET_ALL}")
+            return {
+                "exit_code": -1,
+                "output": "",
+                "error": "Command timed out"
+            }
+        except Exception as e:
+            # Handle other errors
+            self.context.command_history[-1]["status"] = "error"
+            self.context.command_history[-1]["error"] = str(e)
+            self.save_history()
+            print(f"\n{Fore.RED}❌ Error executing command: {str(e)}{Style.RESET_ALL}")
+            return {
+                "exit_code": -1,
+                "output": "",
+                "error": str(e)
+            }
     
     def execute_command(self, command: str) -> Dict:
         """Execute a command and return its result"""
@@ -779,28 +892,99 @@ For any other tasks, simply describe what you want to do
         print(help_text)
     
     def display_command_history(self):
-        """Display command history"""
+        """Display command history in a user-friendly format"""
         if not self.context.command_history:
-            print(f"{Fore.YELLOW}No command history available{Style.RESET_ALL}")
+            print(f"\n{Fore.YELLOW}📝 No command history available{Style.RESET_ALL}")
             return
             
-        print(f"{Fore.CYAN}Command History:{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}📋 Command History:{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+        
         for i, cmd in enumerate(self.context.command_history, 1):
-            status = f"{Fore.GREEN}Success{Style.RESET_ALL}" if cmd.get("exit_code", 1) == 0 else f"{Fore.RED}Failed ({cmd.get('exit_code')}){Style.RESET_ALL}"
+            status_icon = "✅" if cmd.get("exit_code", 1) == 0 else "❌"
+            status_color = Fore.GREEN if cmd.get("exit_code", 1) == 0 else Fore.RED
             execution_time = f"{cmd.get('execution_time', 0):.2f}s"
-            print(f"{i}. {cmd.get('command', '')} - {status} - {execution_time}")
+            
+            print(f"\n{Fore.CYAN}Command {i}:{Style.RESET_ALL}")
+            print(f"{Fore.WHITE}  {cmd.get('command', '')}{Style.RESET_ALL}")
+            print(f"{status_color}  Status: {status_icon} {cmd.get('status', 'unknown')}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}  Time: {execution_time}{Style.RESET_ALL}")
+            
+            if cmd.get("error"):
+                print(f"{Fore.RED}  Error: {cmd['error']}{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}\n")
     
     def display_task_status(self):
-        """Display all tasks and their status"""
+        """Display all tasks and their status in a user-friendly format"""
         if not self.context.task_history:
-            print(f"{Fore.YELLOW}No tasks have been started yet{Style.RESET_ALL}")
+            print(f"\n{Fore.YELLOW}📝 No tasks have been started yet{Style.RESET_ALL}")
             return
         
-        print(f"{Fore.CYAN}Task Status:{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}📋 Task Status:{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+        
         for task in self.context.task_history:
-            print(f"{task}")
-            for subtask in task.subtasks:
-                print(f"  {subtask}")
+            # Get status icon and color
+            status_icon = {
+                "pending": "⏳",
+                "in_progress": "🔄",
+                "completed": "✅",
+                "failed": "❌"
+            }.get(task.status, "❓")
+            
+            status_color = {
+                "pending": Fore.YELLOW,
+                "in_progress": Fore.CYAN,
+                "completed": Fore.GREEN,
+                "failed": Fore.RED
+            }.get(task.status, Fore.WHITE)
+            
+            # Print main task
+            print(f"\n{Fore.CYAN}Task {task.task_id}:{Style.RESET_ALL}")
+            print(f"{status_color}{status_icon} Status: {task.status.upper()}{Style.RESET_ALL}")
+            print(f"{Fore.WHITE}Description: {task.description}{Style.RESET_ALL}")
+            
+            if task.start_time:
+                duration = task.duration if task.duration else "in progress"
+                print(f"{Fore.YELLOW}Duration: {duration}s{Style.RESET_ALL}")
+            
+            # Print subtasks if any
+            if task.subtasks:
+                print(f"\n{Fore.BLUE}Subtasks:{Style.RESET_ALL}")
+                for subtask in task.subtasks:
+                    subtask_status_icon = {
+                        "pending": "⏳",
+                        "in_progress": "🔄",
+                        "completed": "✅",
+                        "failed": "❌"
+                    }.get(subtask.status, "❓")
+                    
+                    subtask_status_color = {
+                        "pending": Fore.YELLOW,
+                        "in_progress": Fore.CYAN,
+                        "completed": Fore.GREEN,
+                        "failed": Fore.RED
+                    }.get(subtask.status, Fore.WHITE)
+                    
+                    print(f"  {subtask_status_color}{subtask_status_icon} {subtask.description}{Style.RESET_ALL}")
+                    if subtask.start_time:
+                        subtask_duration = subtask.duration if subtask.duration else "in progress"
+                        print(f"    {Fore.YELLOW}Duration: {subtask_duration}s{Style.RESET_ALL}")
+            
+            # Print errors if any
+            if task.error:
+                print(f"\n{Fore.RED}❌ Error:{Style.RESET_ALL}")
+                print(f"  {task.error}")
+            
+            # Print output if any
+            if task.output:
+                print(f"\n{Fore.GREEN}📤 Output:{Style.RESET_ALL}")
+                print(f"  {task.output}")
+        
+        print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}\n")
     
     def display_context(self):
         """Display current context information"""
@@ -1002,17 +1186,11 @@ Return ONLY the question text or "NO_QUESTION_NEEDED", nothing else.
             task = f"{task} (Clarification: {answer})"
         
         # Get task planning from AI
-        print(f"{Fore.CYAN}Analyzing task and creating execution plan...{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🤖 Analyzing task and creating execution plan...{Style.RESET_ALL}")
         task_plan = self.get_task_planning(task)
         
-        # Display the plan to the user
-        print(f"\n{Fore.GREEN}TASK PLAN: {task_plan['task_summary']}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}I'll break this down into {len(task_plan['subtasks'])} subtasks:{Style.RESET_ALL}")
-        
-        for i, subtask in enumerate(task_plan['subtasks'], 1):
-            print(f"{Fore.YELLOW}Subtask {i}: {subtask['description']}{Style.RESET_ALL}")
-            if subtask.get('required_resources'):
-                print(f"  Required: {', '.join(subtask['required_resources'])}")
+        # Display the plan in a user-friendly format
+        self.display_task_plan(task_plan)
         
         # If auto-run is disabled, ask for confirmation
         should_run = True
@@ -1152,7 +1330,7 @@ Return ONLY the question text or "NO_QUESTION_NEEDED", nothing else.
                         if edited_cmd.strip():
                             command = edited_cmd
                 
-                result = self.execute_command(command)
+                result = await self._execute_command(command)
                 
                 # Verify command execution with Gemini
                 success, system_state, next_action, diagnostics = self.verify_command_execution(command, result)
@@ -1189,7 +1367,7 @@ Return ONLY the question text or "NO_QUESTION_NEEDED", nothing else.
                     
                     if action == "retry" and fallback_cmd:
                         print(f"{Fore.CYAN}Trying fallback command: {fallback_cmd}{Style.RESET_ALL}")
-                        result = self.execute_command(fallback_cmd)
+                        result = await self._execute_command(fallback_cmd)
                         success, system_state, next_action, diagnostics = self.verify_command_execution(fallback_cmd, result)
                         all_success = success
                     elif action == "skip":
@@ -1413,209 +1591,215 @@ class TerminalAgent(AgentTerminal):
         
         return result
     
-    async def _process_task_async(self, task):
-        """Async version of process_user_task"""
-        # Add the user message to the context
-        self.context.add_user_message(task)
-        
-        # Start a new task
-        main_task = self.context.start_task(task)
-        print(f"\n{Fore.CYAN}Processing task: {task}{Style.RESET_ALL}")
-        
-        # Plan the task
-        print(f"{Fore.YELLOW}Planning task execution...{Style.RESET_ALL}")
-        task_plan = self.get_task_planning(task)
-        
-        # Display plan
-        if task_plan.get("subtasks"):
-            print(f"\n{Fore.CYAN}Task Plan:{Style.RESET_ALL}")
-            for i, subtask in enumerate(task_plan.get("subtasks", []), 1):
-                print(f"  {i}. {subtask}")
-            print()
-        
-        # Execute each subtask
-        main_task_objective_achieved = False
-        main_task_result = ""
-        
-        for i, subtask in enumerate(task_plan.get("subtasks", []), 1):
-            if main_task_objective_achieved:
-                break
-                
-            print(f"\n{Fore.CYAN}Subtask {i}/{len(task_plan.get('subtasks', []))}: {subtask}{Style.RESET_ALL}")
+    async def _process_task_async(self, task: str) -> None:
+        """Process a task asynchronously with improved error handling and user feedback."""
+        try:
+            # Initialize task processing
+            self.current_task = task
+            self.task_start_time = datetime.now()
+            self.task_status = "running"
+            self.task_output = []
+            self.task_errors = []
+            self.task_warnings = []
+            self.task_notes = []
+            self.task_metrics = {
+                "start_time": self.task_start_time.isoformat(),
+                "commands_run": 0,
+                "successful_commands": 0,
+                "failed_commands": 0,
+                "recovery_attempts": 0,
+                "total_duration": 0
+            }
             
-            # Start a subtask
-            current_subtask = self.context.start_subtask(subtask)
+            print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}🚀 Starting Task:{Style.RESET_ALL}")
+            print(f"{Fore.WHITE}{task}{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}\n")
             
-            # Generate commands for this subtask
-            commands = self.get_command_generation(task, subtask)
-            
-            for cmd in commands:
-                # Check if this is a special command
-                if cmd.lower().startswith("cd "):
-                    path = cmd[3:].strip()
-                    self.change_directory(path)
-                    self.context.add_command_to_current_task({
-                        "command": cmd,
-                        "output": f"Changed directory to {self.context.current_directory}",
-                        "timestamp": datetime.now().isoformat(),
-                        "success": True
-                    })
-                    continue
+            # Get task plan from model with reduced timeout
+            try:
+                print(f"{Fore.CYAN}🤖 Generating execution plan...{Style.RESET_ALL}")
+                plan_prompt = f"""Given the task: {task}
+
+Generate a detailed plan for executing this task. The plan should include:
+1. A clear sequence of steps
+2. Specific commands to run
+3. Expected outcomes
+4. Potential issues to watch for
+
+Format the response as a JSON object with the following structure:
+{{
+    "steps": [
+        {{
+            "description": "Step description",
+            "commands": ["command1", "command2"],
+            "expected_outcome": "What should happen",
+            "potential_issues": ["issue1", "issue2"]
+        }}
+    ]
+}}"""
+
+                plan_response = await self._get_model_response(plan_prompt, timeout=30)
+                plan_data = json.loads(plan_response)
+                self.task_plan = plan_data["steps"]
                 
-                # Execute the command
-                print(f"{Fore.YELLOW}Executing: {cmd}{Style.RESET_ALL}")
-                result = self.execute_command(cmd)
+                # Display the plan
+                self.display_task_plan(plan_data)
                 
-                # Add the command execution to the current task history
-                self.context.add_command_to_current_task({
-                    "command": cmd, 
-                    "output": result.get("output", ""),
-                    "error": result.get("error", ""),
-                    "timestamp": datetime.now().isoformat(),
-                    "success": result.get("success", False)
-                })
+            except Exception as e:
+                error_msg = f"Error generating task plan: {str(e)}"
+                print(f"\n{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
+                self.task_errors.append(error_msg)
+                self.task_plan = []
+
+            # Execute each step in the plan
+            for step in self.task_plan:
+                self.current_step = step
+                self.task_notes.append(f"Starting step: {step['description']}")
                 
-                # Check if the command failed
-                if not result.get("success", False):
-                    # Try to get recovery commands
-                    print(f"{Fore.RED}Command failed: {cmd}{Style.RESET_ALL}")
-                    print(f"{Fore.RED}Error: {result.get('error', 'Unknown error')}{Style.RESET_ALL}")
-                    print(f"{Fore.YELLOW}Attempting to recover...{Style.RESET_ALL}")
-                    
-                    recovery_prompt = f"""
-                    The command `{cmd}` failed with error: {result.get('error', 'Unknown error')}
-                    
-                    Current task: {task}
-                    Current subtask: {subtask}
-                    
-                    Suggest alternative commands to recover from this error.
-                    
-                    Format your response as a JSON array of command strings.
-                    """
-                    
+                print(f"\n{Fore.CYAN}{'='*30}{Style.RESET_ALL}")
+                print(f"{Fore.GREEN}📝 Step: {step['description']}{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}{'='*30}{Style.RESET_ALL}\n")
+                
+                # Execute commands for this step
+                for cmd in step["commands"]:
                     try:
-                        response = MODEL.generate_content(recovery_prompt)
-                        recovery_text = response.text
+                        # Execute command with reduced timeout
+                        result = await self._execute_command(cmd)
                         
-                        # Try to parse as JSON
-                        try:
-                            # Clean the text to extract only the JSON part
-                            pattern = r"```(?:json)?(.*?)```"
-                            match = re.search(pattern, recovery_text, re.DOTALL)
-                            if match:
-                                json_str = match.group(1).strip()
-                            else:
-                                json_str = recovery_text.strip()
-                                
-                            # Remove leading/trailing [], if present
-                            if json_str.startswith('```') and json_str.endswith('```'):
-                                json_str = json_str[3:-3].strip()
-                                
-                            # Try to parse the JSON
-                            recovery_commands = json.loads(json_str)
+                        # Check if command failed
+                        if result["exit_code"] != 0:
+                            self.task_errors.append(f"Command failed: {cmd}")
+                            self.task_errors.append(f"Error: {result['error']}")
                             
-                            if isinstance(recovery_commands, list) and recovery_commands:
-                                print(f"{Fore.GREEN}Found recovery commands:{Style.RESET_ALL}")
-                                for i, recovery_cmd in enumerate(recovery_commands, 1):
-                                    print(f"  {i}. {recovery_cmd}")
-                                
-                                # Execute each recovery command
-                                for recovery_cmd in recovery_commands:
-                                    print(f"\n{Fore.YELLOW}Executing recovery: {recovery_cmd}{Style.RESET_ALL}")
-                                    recovery_result = self.execute_command(recovery_cmd)
+                            print(f"\n{Fore.YELLOW}⚠️ Command failed, attempting recovery...{Style.RESET_ALL}")
+                            
+                            # Try recovery commands with increased attempts
+                            recovery_attempts = 0
+                            max_recovery_attempts = 70  # Increased from 30 to 70
+                            while recovery_attempts < max_recovery_attempts:
+                                try:
+                                    recovery_prompt = f"""Command failed: {cmd}
+Error: {result['error']}
+Output: {result['output']}
+
+Generate alternative commands to achieve the same goal. Format as JSON:
+{{
+    "alternatives": [
+        {{
+            "command": "alternative command",
+            "explanation": "Why this might work"
+        }}
+    ]
+}}"""
+
+                                    recovery_response = await self._get_model_response(recovery_prompt, timeout=30)
+                                    recovery_data = json.loads(recovery_response)
                                     
-                                    # Add the recovery command to the current task history
-                                    self.context.add_command_to_current_task({
-                                        "command": recovery_cmd,
-                                        "output": recovery_result.get("output", ""),
-                                        "error": recovery_result.get("error", ""),
-                                        "timestamp": datetime.now().isoformat(),
-                                        "success": recovery_result.get("success", False),
-                                        "is_recovery": True
-                                    })
+                                    print(f"\n{Fore.CYAN}🔄 Recovery attempt {recovery_attempts + 1}/{max_recovery_attempts}{Style.RESET_ALL}")
                                     
-                                    # If the recovery succeeded, continue with the next command
-                                    if recovery_result.get("success", False):
-                                        print(f"{Fore.GREEN}Recovery successful!{Style.RESET_ALL}")
+                                    for alt in recovery_data["alternatives"]:
+                                        print(f"{Fore.WHITE}Trying: {alt['command']}{Style.RESET_ALL}")
+                                        recovery_result = await self._execute_command(alt["command"])
+                                        if recovery_result["exit_code"] == 0:
+                                            self.task_notes.append(f"Recovery successful: {alt['command']}")
+                                            self.task_metrics["recovery_attempts"] += 1
+                                            print(f"{Fore.GREEN}✅ Recovery successful!{Style.RESET_ALL}")
+                                            break
+                                    
+                                    recovery_attempts += 1
+                                    if recovery_attempts >= max_recovery_attempts:
+                                        error_msg = f"Max recovery attempts ({max_recovery_attempts}) reached"
+                                        print(f"\n{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
+                                        self.task_errors.append(error_msg)
                                         break
-                            else:
-                                print(f"{Fore.RED}No valid recovery commands found.{Style.RESET_ALL}")
-                                
-                        except json.JSONDecodeError:
-                            print(f"{Fore.RED}Error parsing recovery commands. Continuing with next command.{Style.RESET_ALL}")
+                                        
+                                except Exception as e:
+                                    error_msg = f"Error during recovery: {str(e)}"
+                                    print(f"\n{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
+                                    self.task_errors.append(error_msg)
+                                    recovery_attempts += 1
+                                    if recovery_attempts >= max_recovery_attempts:
+                                        break
+                        else:
+                            self.task_metrics["successful_commands"] += 1
+                            self.task_output.append(result["output"])
                             
                     except Exception as e:
-                        print(f"{Fore.RED}Error getting recovery commands: {str(e)}{Style.RESET_ALL}")
-            
-            # Complete the subtask
-            print(f"{Fore.GREEN}Completed subtask: {subtask}{Style.RESET_ALL}")
-            self.context.complete_current_task("Subtask commands executed")
-            
-            # Evaluate if the main task objective has been achieved
-            evaluate_prompt = f"""
-            Based on the execution of the subtask "{subtask}", evaluate if the main task objective "{task}" has been achieved.
-            
-            Previous subtasks completed:
-            {chr(10).join([f"- {s}" for s in task_plan.get("subtasks", [])[:i]])}
-            
-            Command execution for current subtask:
-            {chr(10).join([f"- {c.get('command', '')} -> {'Success' if c.get('success', False) else 'Failed: ' + c.get('error', '')}" for c in current_subtask.command_history])}
-            
-            Return your evaluation as a JSON object with the following properties:
-            - is_complete: boolean indicating if the main task objective is achieved
-            - result: string describing the result of the task
-            - reason: string explaining why the task is considered complete or incomplete
-            """
-            
-            try:
-                response = MODEL.generate_content(evaluate_prompt)
-                text = response.text
+                        error_msg = f"Error executing command {cmd}: {str(e)}"
+                        print(f"\n{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
+                        self.task_errors.append(error_msg)
+                        self.task_metrics["failed_commands"] += 1
                 
-                # Try to extract JSON
+                self.task_metrics["commands_run"] += len(step["commands"])
+            
+            # Update task status
+            self.task_status = "completed"
+            self.task_metrics["total_duration"] = (datetime.now() - self.task_start_time).total_seconds()
+            
+            # Print task summary
+            print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}📊 Task Summary:{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+            print(f"{Fore.WHITE}Total Duration: {self.task_metrics['total_duration']:.2f}s{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}Successful Commands: {self.task_metrics['successful_commands']}{Style.RESET_ALL}")
+            print(f"{Fore.RED}Failed Commands: {self.task_metrics['failed_commands']}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Recovery Attempts: {self.task_metrics['recovery_attempts']}{Style.RESET_ALL}")
+            
+            if self.task_errors:
+                print(f"\n{Fore.RED}❌ Errors:{Style.RESET_ALL}")
+                for error in self.task_errors:
+                    print(f"  • {error}")
+            
+            print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}\n")
+            
+            # Save task history
+            self._save_task_history()
+            
+        except Exception as e:
+            self.task_status = "failed"
+            error_msg = f"Task processing failed: {str(e)}"
+            print(f"\n{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
+            self.task_errors.append(error_msg)
+            self._save_task_history()
+
+    async def _get_model_response(self, prompt: str, timeout: int = 30) -> str:
+        """Get a response from the model with improved efficiency."""
+        try:
+            # Add retry logic with exponential backoff
+            max_retries = 3
+            retry_delay = 1
+            
+            for attempt in range(max_retries):
                 try:
-                    # Check for code blocks
-                    if "```" in text:
-                        match = re.search(r'```(?:json)?(.*?)```', text, re.DOTALL)
-                        if match:
-                            json_str = match.group(1).strip()
-                        else:
-                            json_str = text
-                    else:
-                        match = re.search(r'({.*})', text, re.DOTALL)
-                        if match:
-                            json_str = match.group(1)
-                        else:
-                            json_str = text
+                    # Generate response with reduced timeout
+                    response = await asyncio.wait_for(
+                        MODEL.generate_content(prompt),
+                        timeout=timeout
+                    )
                     
-                    evaluation = json.loads(json_str)
-                    if evaluation.get("is_complete", False):
-                        main_task_objective_achieved = True
-                        main_task_result = evaluation.get("result", "Task complete")
-                        print(f"\n{Fore.GREEN}Main task objective achieved: {main_task_result}{Style.RESET_ALL}")
-                        print(f"{Fore.YELLOW}Reason: {evaluation.get('reason', '')}{Style.RESET_ALL}")
-                        print(f"{Fore.YELLOW}Remaining subtasks are no longer necessary. Ending task.{Style.RESET_ALL}")
-                        break
+                    # Process response
+                    if response and response.text:
+                        return response.text.strip()
+                    
+                except asyncio.TimeoutError:
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    raise
+                    
                 except Exception as e:
-                    print(f"{Fore.YELLOW}Error evaluating task completion: {str(e)}{Style.RESET_ALL}")
-            except Exception as e:
-                print(f"{Fore.YELLOW}Error evaluating task completion with model: {str(e)}{Style.RESET_ALL}")
-        
-        # Complete the main task
-        if main_task_objective_achieved:
-            print(f"\n{Fore.GREEN}Task completed: {task}{Style.RESET_ALL}")
-            print(f"{Fore.GREEN}Result: {main_task_result}{Style.RESET_ALL}")
-        else:
-            print(f"\n{Fore.GREEN}Task completed: {task}{Style.RESET_ALL}")
-        
-        self.context.complete_current_task("All necessary subtasks completed")
-        
-        # Return the result for one-shot mode
-        return main_task_result if main_task_objective_achieved else "Task completed"
-    
-    async def cleanup(self):
-        """Cleanup resources after one-shot execution"""
-        # Just save history if needed
-        self.save_history()
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    raise
+            
+            raise Exception("Failed to get model response after all retries")
+            
+        except Exception as e:
+            raise Exception(f"Error getting model response: {str(e)}")
 
 if __name__ == "__main__":
     import asyncio

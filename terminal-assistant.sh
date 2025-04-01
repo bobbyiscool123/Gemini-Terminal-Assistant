@@ -2,86 +2,125 @@
 # terminal-assistant.sh - One-shot command for Gemini Terminal Assistant
 # Usage: terminal-assistant <task description>
 
-# Check if a task was provided
+# Terminal Assistant Launcher
+# This script launches the Terminal Assistant in one-shot mode
+
+# Function to display usage
+show_usage() {
+    echo "Usage: terminal-assistant [task]"
+    echo "Example: terminal-assistant 'list files in current directory'"
+    exit 1
+}
+
+# Function to check Python version
+check_python_version() {
+    if ! command -v python3 &> /dev/null; then
+        echo "Error: Python 3 is not installed"
+        exit 1
+    fi
+    
+    python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+    if (( $(echo "$python_version < 3.7" | bc -l) )); then
+        echo "Error: Python 3.7 or higher is required (found $python_version)"
+        exit 1
+    fi
+}
+
+# Function to check Termux environment
+check_termux_env() {
+    if [ -d "/data/data/com.termux" ]; then
+        export TERMUX=true
+        # Set Termux-specific paths
+        export PATH="/data/data/com.termux/files/usr/bin:$PATH"
+        # Check for Termux packages
+        if ! command -v python3 &> /dev/null; then
+            echo "Installing required Termux packages..."
+            pkg update -y
+            pkg install -y python
+        fi
+    else
+        export TERMUX=false
+    fi
+}
+
+# Function to check PRoot-distro environment
+check_proot_env() {
+    if [ -f "/usr/local/bin/proot-distro" ]; then
+        export PROOT=true
+        # Get current distribution
+        export PROOT_DISTRO=$(proot-distro list | grep "^\*" | cut -d' ' -f2)
+    else
+        export PROOT=false
+    fi
+}
+
+# Main script
 if [ $# -eq 0 ]; then
-  echo "Usage: terminal-assistant <task description>"
-  echo "Example: terminal-assistant \"install nodejs\""
-  exit 1
+    show_usage
 fi
 
-# Save the current directory
-CURRENT_DIR=$(pwd)
+# Get the script's directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+ASSISTANT_DIR="$SCRIPT_DIR"
 
-# Path to the Gemini Terminal Assistant installation
-# This should be changed to match your actual installation path
-ASSISTANT_DIR="/root/Desktop/Gemini-Terminal-Assistant"
+# Check if assistant directory exists
+if [ ! -d "$ASSISTANT_DIR" ]; then
+    echo "Error: Assistant directory not found at $ASSISTANT_DIR"
+    exit 1
+fi
 
-# Construct the task from all arguments
+# Check Python version
+check_python_version
+
+# Check environment
+check_termux_env
+check_proot_env
+
+# Check for virtual environment
+if [ ! -d "$ASSISTANT_DIR/venv" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv "$ASSISTANT_DIR/venv"
+fi
+
+# Check for .env file
+if [ ! -f "$ASSISTANT_DIR/.env" ]; then
+    echo "Error: .env file not found. Please create one with your API key."
+    exit 1
+fi
+
+# Construct the task from arguments
 TASK="$*"
 
-# Check if the assistant directory exists
-if [ ! -d "$ASSISTANT_DIR" ]; then
-  echo "Error: Terminal Assistant not found at $ASSISTANT_DIR"
-  echo "Please update ASSISTANT_DIR in this script to point to your installation"
-  exit 1
+# Activate virtual environment and run the assistant
+cd "$ASSISTANT_DIR" || exit 1
+
+# Source the virtual environment
+if [ "$TERMUX" = true ]; then
+    source "$ASSISTANT_DIR/venv/bin/activate"
+else
+    source "$ASSISTANT_DIR/venv/bin/activate"
 fi
 
-# Navigate to the assistant directory
-cd "$ASSISTANT_DIR"
+# Set environment variables
+export PYTHONPATH="$ASSISTANT_DIR:$PYTHONPATH"
+export TERMUX_ENV="$TERMUX"
+export PROOT_ENV="$PROOT"
+export PROOT_DISTRO_NAME="$PROOT_DISTRO"
 
-# Check if virtual environment exists
-if [ ! -d "$ASSISTANT_DIR/venv" ]; then
-  echo "Error: Virtual environment not found. Please run setup.py first."
-  cd "$CURRENT_DIR"
-  exit 1
-fi
-
-# Check if .env file with API key exists
-if [ ! -f "$ASSISTANT_DIR/.env" ]; then
-  echo "Error: .env file with GOOGLE_API_KEY not found."
-  echo "Please create a .env file with your Google API key."
-  cd "$CURRENT_DIR"
-  exit 1
-fi
-
-# Activate the virtual environment and run the one-shot command
-echo "Running task: $TASK"
-echo "Working directory: $CURRENT_DIR"
-echo "--------------------------------------------"
-
-# Source the virtual environment and run the task in one-shot mode
-source "$ASSISTANT_DIR/venv/bin/activate" && \
-CURRENT_WORKING_DIR="$CURRENT_DIR" python -c "
+# Run the assistant
+python3 -c "
 import os
 import sys
-import asyncio
-from dotenv import load_dotenv
+from agent_terminal import AgentTerminal
 
-# Set working directory for the assistant
-os.environ['CURRENT_WORKING_DIR'] = os.environ.get('CURRENT_WORKING_DIR', '.')
+# Set working directory
+os.chdir('$ASSISTANT_DIR')
 
-# Import assistant modules
+# Initialize and run the assistant
 try:
-    load_dotenv()
-    sys.path.append('$ASSISTANT_DIR')
-    from agent_terminal import TerminalAgent
-except ImportError as e:
-    print(f'Error loading Terminal Assistant: {e}')
+    agent = AgentTerminal()
+    agent.run_one_shot('$TASK')
+except Exception as e:
+    print(f'Error: {str(e)}', file=sys.stderr)
     sys.exit(1)
-
-# Run the assistant with the task
-async def run_one_shot():
-    agent = TerminalAgent(initial_directory=os.environ.get('CURRENT_WORKING_DIR'))
-    await agent.initialize()
-    print('\n🤖 Terminal Assistant: Working on your task...\n')
-    result = await agent.process_task('$TASK', one_shot=True)
-    print('\n✅ Task completed:\n', result)
-    await agent.cleanup()
-
-# Run in one-shot mode
-if __name__ == '__main__':
-    asyncio.run(run_one_shot())
 "
-
-# Return to the original directory
-cd "$CURRENT_DIR"

@@ -43,44 +43,52 @@ class PlatformUtils:
             return os.environ.get("SHELL", "/bin/bash").split("/")[-1]
     
     @staticmethod
-    def get_platform_info() -> Dict[str, str]:
+    def get_platform_info() -> Dict:
         """Get detailed platform information"""
         info = {
-            "system": platform.system(),
-            "release": platform.release(),
-            "version": platform.version(),
+            "os": platform.system().lower(),
+            "os_release": platform.release(),
+            "os_version": platform.version(),
             "machine": platform.machine(),
             "processor": platform.processor(),
-            "architecture": platform.architecture()[0],
             "python_version": platform.python_version(),
-            "shell": PlatformUtils.get_shell()
+            "is_termux": False,
+            "is_proot": False,
+            "termux_version": None,
+            "proot_distro": None
         }
         
-        # Add Windows-specific information
-        if PlatformUtils.is_windows():
-            try:
-                # Get Windows edition
-                edition = subprocess.check_output(
-                    ["powershell", "-Command", "(Get-WmiObject -Class Win32_OperatingSystem).Caption"], 
-                    text=True
-                ).strip()
-                info["edition"] = edition
-            except:
-                info["edition"] = "Unknown Windows Edition"
-        
-        # Add Linux-specific information
-        elif PlatformUtils.is_linux():
-            try:
-                # Get distribution info
-                with open("/etc/os-release") as f:
-                    lines = f.readlines()
-                    for line in lines:
-                        if "=" in line:
-                            key, value = line.strip().split("=", 1)
-                            info[key.lower()] = value.strip('"')
-            except:
-                info["distro"] = "Unknown Linux Distribution"
-        
+        # Check for Termux environment
+        try:
+            if os.path.exists("/data/data/com.termux"):
+                info["is_termux"] = True
+                # Try to get Termux version
+                try:
+                    with open("/data/data/com.termux/files/usr/etc/termux/version", "r") as f:
+                        info["termux_version"] = f.read().strip()
+                except:
+                    pass
+        except:
+            pass
+            
+        # Check for PRoot-distro
+        try:
+            if os.path.exists("/usr/local/bin/proot-distro"):
+                info["is_proot"] = True
+                # Try to get PRoot-distro information
+                try:
+                    result = subprocess.run(
+                        ["proot-distro", "list"],
+                        capture_output=True,
+                        text=True
+                    )
+                    if result.returncode == 0:
+                        info["proot_distro"] = result.stdout.strip()
+                except:
+                    pass
+        except:
+            pass
+            
         return info
 
 class CommandValidator:

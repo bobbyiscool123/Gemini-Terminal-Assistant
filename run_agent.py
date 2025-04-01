@@ -35,7 +35,9 @@ def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="AI Terminal Assistant")
     parser.add_argument("--execute", type=str, help="Execute a command and exit", default=None)
-    return parser.parse_args()
+    # Parse known args only to avoid problems with special characters in commands
+    args, _ = parser.parse_known_args()
+    return args
 
 def main():
     """Main entry point"""
@@ -48,13 +50,14 @@ def main():
     
     # Special handling for help/version only - everything else goes to the AI
     if execute_mode:
-        command = args.execute.strip().lower()
+        command = args.execute.strip()
+        command_lower = command.lower()
         
         # Only handle special commands like version and help
-        if command in ["--version", "version", "-v"]:
+        if command_lower in ["--version", "version", "-v"]:
             print("AI Terminal Assistant v1.0")
             return 0
-        elif command in ["--help", "-h"]:
+        elif command_lower in ["--help", "-h"]:
             print("Usage: terminal-assistant [command]")
             print("Run without arguments for interactive mode")
             return 0
@@ -74,8 +77,15 @@ def main():
         if execute_mode:
             # Run in command execution mode
             try:
+                # Convert Windows path separators to forward slashes if needed
+                # This helps prevent interpretation of backslashes as escape characters
+                command = args.execute.replace('\\', '/')
+                
+                # Create agent with auto_run and silent_init enabled
                 agent = AgentTerminal(auto_run=True, silent_init=True)
-                agent.process_user_input(args.execute)
+                
+                # Process the user input
+                agent.process_user_input(command)
                 return 0
             except KeyboardInterrupt:
                 print("\nOperation cancelled by user.")

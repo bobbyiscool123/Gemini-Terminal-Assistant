@@ -306,9 +306,40 @@ class AgentTerminal:
         if any(re.search(pattern, text_lower) for pattern in conversational_patterns):
             return True
             
-        # If it's very short (1-3 words) and doesn't contain command-like terms
+        # List of task-related terms that should be processed as commands, not conversations
+        task_terms = ['install', 'create', 'delete', 'find', 'run', 'show', 'list', 'make', 'exec', 
+                      'search', 'organize', 'copy', 'move', 'check', 'get', 'display', 'monitor', 
+                      'analyze', 'download', 'upload', 'convert', 'rename', 'backup']
+        
+        # Technical/system-specific terms that strongly indicate a command, not conversation
+        technical_terms = ['cpu', 'memory', 'ram', 'disk', 'drive', 'file', 'folder', 'directory', 
+                           'process', 'system', 'network', 'port', 'usage', 'real-time', 'realtime',
+                           'performance', 'monitor', 'resource', 'task manager', 'log', 'service',
+                           'registry', 'database', 'hardware', 'software', 'driver', 'update']
+        
+        # If it contains technical terms, definitely treat as a command
+        if any(term in text_lower for term in technical_terms):
+            return False
+            
+        # If it contains task-related terms, it's not conversational
+        if any(term in text_lower for term in task_terms):
+            return False
+            
+        # Special case: monitoring commands should never be conversational
+        monitoring_patterns = [
+            r'(show|display|check|monitor|get).*(cpu|processor|memory|ram|system).*(usage|performance|status|health)',
+            r'(cpu|memory|ram|system).*(usage|monitor|status|performance)',
+            r'(show|display|monitor).*(resource|usage|performance)',
+            r'real.?time.*(monitor|usage|performance|stats)',
+            r'how.*(much|many).*(cpu|memory|ram)'
+        ]
+        
+        if any(re.search(pattern, text_lower) for pattern in monitoring_patterns):
+            return False
+            
+        # If it's very short (1-3 words) and doesn't contain task-related terms
         word_count = len(text_lower.split())
-        if word_count <= 3 and not any(cmd in text_lower for cmd in ['install', 'create', 'delete', 'find', 'run', 'show', 'list', 'make', 'exec']):
+        if word_count <= 3:
             return True
             
         return False
@@ -388,6 +419,43 @@ Remember:
             print(os.getcwd())
             return True
             
+        # Enhanced check for monitoring commands before other processing
+        # This should happen before the conversational query check
+        user_input_lower = user_input.lower()
+        is_monitoring = False
+        
+        # Comprehensive check for various monitoring command formats
+        if (('show' in user_input_lower or 'display' in user_input_lower or 'monitor' in user_input_lower) and 
+            ('cpu' in user_input_lower or 'processor' in user_input_lower or 'memory' in user_input_lower or 
+             'ram' in user_input_lower or 'resource' in user_input_lower or 'system' in user_input_lower) and
+            ('usage' in user_input_lower or 'performance' in user_input_lower or 'status' in user_input_lower or 
+             'real-time' in user_input_lower or 'realtime' in user_input_lower)):
+            is_monitoring = True
+            
+        # Additional checks for more specific monitoring patterns
+        monitoring_patterns = [
+            r'(show|display|check|monitor|get).*(cpu|processor|memory|ram|system).*(usage|performance|status|health)',
+            r'(cpu|memory|ram|system).*(usage|monitor|status|performance)',
+            r'(show|display|monitor).*(resource|usage|performance)',
+            r'real.?time.*(monitor|usage|performance|stats)',
+            r'how.*(much|many).*(cpu|memory|ram)'
+        ]
+        
+        if not is_monitoring:
+            is_monitoring = any(re.search(pattern, user_input_lower) for pattern in monitoring_patterns)
+            
+        # Handle monitoring commands with direct execution
+        if is_monitoring:
+            print(f"{Fore.CYAN}Detected system monitoring command. Processing...{Style.RESET_ALL}")
+            self.handle_monitoring_command(user_input)
+            
+            # Add to command history
+            self.command_history.append(user_input)
+            if not self.silent_init:
+                self.save_history()
+                
+            return True
+            
         # Check if this is a conversational query rather than a task
         if self.is_conversational_query(user_input):
             return self.handle_conversation(user_input)
@@ -400,7 +468,139 @@ Remember:
         # Process the task
         self.process_user_task(user_input)
         return True
+    
+    def is_monitoring_command(self, command: str) -> bool:
+        """Check if a command is requesting real-time monitoring"""
+        command_lower = command.lower()
+        monitoring_terms = ["real-time", "realtime", "monitor", "live", "continuous"]
+        resource_terms = ["cpu", "memory", "ram", "processor", "system", "resources", "performance"]
+        
+        has_monitoring = any(term in command_lower for term in monitoring_terms)
+        has_resource = any(term in command_lower for term in resource_terms)
+        
+        return has_monitoring and has_resource
+    
+    def handle_monitoring_command(self, command: str) -> None:
+        """Handle real-time monitoring commands directly"""
+        # Start a task for proper history tracking
+        task = self.context.start_task(command)
+        task.start()
+        
+        print(f"{Fore.CYAN}Starting system monitoring...{Style.RESET_ALL}")
+        
+        # Track if we're showing CPU, memory, or both
+        show_cpu = True
+        show_memory = True
+        
+        # Check what resources to monitor based on command
+        command_lower = command.lower()
+        if 'cpu' in command_lower and 'memory' not in command_lower and 'ram' not in command_lower:
+            show_memory = False
+        elif ('memory' in command_lower or 'ram' in command_lower) and 'cpu' not in command_lower:
+            show_cpu = False
+        
+        # Different commands based on platform
+        if platform.system() == "Windows":
+            monitoring_results = []
             
+            # Create a better command for monitoring that doesn't use continuous mode
+            if show_cpu:
+                # Display top CPU-consuming processes
+                print(f"{Fore.YELLOW}Top CPU consumers:{Style.RESET_ALL}")
+                monitor_cmd = "powershell -Command \"Get-Process | Sort-Object -Property CPU -Descending | Select-Object -First 10 Name, CPU, WorkingSet, ID | Format-Table -AutoSize\""
+                result = self.execute_command(monitor_cmd)
+                if result["exit_code"] == 0:
+                    monitoring_results.append("CPU process list: Success")
+                else:
+                    monitoring_results.append("CPU process list: Failed")
+                    
+                # Show current CPU usage percentage
+                print(f"{Fore.YELLOW}Current CPU usage:{Style.RESET_ALL}")
+                cpu_cmd = "powershell -Command \"$CPU = (Get-Counter '\\Processor(_Total)\\% Processor Time' -SampleInterval 1 -MaxSamples 1).CounterSamples.CookedValue; Write-Host ('CPU usage: {0:N2}%' -f $CPU)\""
+                result = self.execute_command(cpu_cmd)
+                if result["exit_code"] == 0:
+                    monitoring_results.append("CPU usage percentage: Success")
+                else:
+                    monitoring_results.append("CPU usage percentage: Failed")
+            
+            if show_memory:
+                # Show memory usage
+                print(f"{Fore.YELLOW}Memory usage:{Style.RESET_ALL}")
+                memory_cmd = "powershell -Command \"Get-CimInstance Win32_OperatingSystem | Select-Object @{Name='TotalVisibleMemory (MB)';Expression={[math]::Round($_.TotalVisibleMemorySize/1KB,2)}}, @{Name='FreePhysicalMemory (MB)';Expression={[math]::Round($_.FreePhysicalMemory/1KB,2)}}, @{Name='UsedMemory (MB)';Expression={[math]::Round(($_.TotalVisibleMemorySize-$_.FreePhysicalMemory)/1KB,2)}}, @{Name='MemoryUsage (%)';Expression={[math]::Round(($_.TotalVisibleMemorySize-$_.FreePhysicalMemory)/$_.TotalVisibleMemorySize*100,2)}} | Format-Table -AutoSize\""
+                result = self.execute_command(memory_cmd)
+                if result["exit_code"] == 0:
+                    monitoring_results.append("Memory usage information: Success")
+                else:
+                    monitoring_results.append("Memory usage information: Failed")
+                
+                # Show memory usage by process
+                print(f"{Fore.YELLOW}Top memory consumers:{Style.RESET_ALL}")
+                mem_process_cmd = "powershell -Command \"Get-Process | Sort-Object -Property WorkingSet -Descending | Select-Object -First 10 Name, @{Name='Memory (MB)';Expression={[math]::Round($_.WorkingSet/1MB,2)}}, CPU, ID | Format-Table -AutoSize\""
+                result = self.execute_command(mem_process_cmd)
+                if result["exit_code"] == 0:
+                    monitoring_results.append("Memory process list: Success")
+                else:
+                    monitoring_results.append("Memory process list: Failed")
+            
+            # Real-time monitoring hint
+            if "real-time" in command_lower or "realtime" in command_lower or "continuous" in command_lower or "live" in command_lower:
+                print(f"\n{Fore.GREEN}For continuous real-time monitoring, using Task Manager is recommended.{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}Would you like to open Task Manager now? (y/n){Style.RESET_ALL}")
+                response = input("> ").strip().lower()
+                if response == "y" or response == "yes":
+                    print(f"{Fore.CYAN}Opening Task Manager...{Style.RESET_ALL}")
+                    subprocess.Popen("taskmgr", shell=True)
+                    monitoring_results.append("Opened Task Manager for continuous monitoring")
+            else:
+                # Provide info about real-time monitoring
+                print(f"\n{Fore.GREEN}System monitoring snapshot complete.{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}For continuous real-time monitoring, you can use Task Manager.{Style.RESET_ALL}")
+            
+            # Complete the task
+            self.context.complete_current_task("\n".join(monitoring_results))
+            
+        else:
+            # Linux monitoring
+            monitoring_results = []
+            
+            if show_cpu:
+                print(f"{Fore.YELLOW}Top CPU consumers:{Style.RESET_ALL}")
+                result = self.execute_command("ps aux --sort=-%cpu | head -n 11")
+                if result["exit_code"] == 0:
+                    monitoring_results.append("CPU process list: Success")
+                else:
+                    monitoring_results.append("CPU process list: Failed")
+                
+                print(f"{Fore.YELLOW}System load:{Style.RESET_ALL}")
+                result = self.execute_command("uptime")
+                if result["exit_code"] == 0:
+                    monitoring_results.append("System load: Success")
+                else:
+                    monitoring_results.append("System load: Failed")
+            
+            if show_memory:
+                print(f"{Fore.YELLOW}Memory usage:{Style.RESET_ALL}")
+                result = self.execute_command("free -h")
+                if result["exit_code"] == 0:
+                    monitoring_results.append("Memory usage: Success")
+                else:
+                    monitoring_results.append("Memory usage: Failed")
+            
+            # Real-time monitoring hint
+            if "real-time" in command_lower or "realtime" in command_lower or "continuous" in command_lower or "live" in command_lower:
+                print(f"\n{Fore.GREEN}For continuous real-time monitoring, you can use the 'top' command in a separate terminal.{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}Would you like to run 'top' now? (y/n){Style.RESET_ALL}")
+                response = input("> ").strip().lower()
+                if response == "y" or response == "yes":
+                    print(f"{Fore.CYAN}Running top (press q to exit)...{Style.RESET_ALL}")
+                    result = self.execute_command("top")
+                    monitoring_results.append("Ran top command")
+            else:
+                print(f"\n{Fore.GREEN}System monitoring complete. For continuous monitoring, use 'top' in a separate terminal.{Style.RESET_ALL}")
+            
+            # Complete the task
+            self.context.complete_current_task("\n".join(monitoring_results))
+    
     def run(self):
         """Run the agent terminal in interactive mode"""
         while True:
@@ -694,6 +894,24 @@ Return a JSON object with this structure:
         recent_commands = "\n".join([f"- {cmd.get('command', '')}" for cmd in self.context.command_history[-5:]])
         recent_errors = "\n".join([f"- Command: {cmd}, Error: {err}" for cmd, err in self.context.recent_errors[-3:]])
         
+        # Special handling for real-time monitoring
+        if ("real-time" in task_context.lower() or "monitor" in task_context.lower()) and \
+           ("cpu" in task_context.lower() or "memory" in task_context.lower() or "system" in task_context.lower()):
+            
+            if platform.system() == "Windows":
+                return [
+                    # Limited samples instead of continuous for stable execution
+                    "powershell -Command \"Get-Counter '\\Processor(_Total)\\% Processor Time', '\\Memory\\% Committed Bytes In Use' -SampleInterval 1 -MaxSamples 10 | Format-Table -AutoSize\"",
+                    "powershell -Command \"Get-Process | Sort-Object -Property CPU -Descending | Select-Object -First 10 Name, CPU, WorkingSet, ID | Format-Table -AutoSize\""
+                ]
+            else:
+                # Linux commands
+                return [
+                    "top -n 10 -b",
+                    "free -m",
+                    "ps aux --sort=-%cpu | head -n 11"
+                ]
+        
         prompt = f"""
 # TERMINAL COMMAND GENERATOR
 
@@ -714,6 +932,8 @@ Ensure commands are appropriate for the user's operating system.
 ### WINDOWS GUIDELINES
 - Use PowerShell for complex tasks
 - Use CMD for simple tasks
+- Avoid continuous monitoring commands that run indefinitely
+- For PowerShell commands that typically would use -Continuous flag, use -MaxSamples 10 instead
 - For complex PowerShell commands, use: powershell -Command "Your-Command-Here"
 
 ### RETURN FORMAT
@@ -733,6 +953,14 @@ Return ONLY the raw commands, one per line, with NO explanations, backticks, or 
             default_commands = ["ipconfig /all"] if is_windows else ["ifconfig"]
         elif "system" in task_context.lower() or "info" in task_context.lower():
             default_commands = ["systeminfo"] if is_windows else ["uname -a && cat /etc/os-release"]
+        elif "cpu" in task_context.lower() or "memory" in task_context.lower() or "monitor" in task_context.lower():
+            if is_windows:
+                default_commands = [
+                    "powershell -Command \"Get-Process | Sort-Object -Property CPU -Descending | Select-Object -First 10 Name, CPU, WorkingSet, ID | Format-Table -AutoSize\"",
+                    "powershell -Command \"Get-Counter '\\Processor(_Total)\\% Processor Time', '\\Memory\\% Committed Bytes In Use' -SampleInterval 1 -MaxSamples 10 | Format-Table -AutoSize\""
+                ]
+            else:
+                default_commands = ["top -n 10 -b", "free -m"]
         else:
             # Very safe fallback
             default_commands = ["dir"] if is_windows else ["ls"]
@@ -774,6 +1002,11 @@ Return ONLY the raw commands, one per line, with NO explanations, backticks, or 
                     if len(line.split()) >= 1:
                         commands.append(line)
                 
+                # For real-time monitoring tasks, ensure we don't use continuous monitoring
+                if ("real-time" in task_context.lower() or "monitor" in task_context.lower()) and \
+                   ("cpu" in task_context.lower() or "memory" in task_context.lower() or "system" in task_context.lower()):
+                    commands = [cmd.replace("-Continuous", "-MaxSamples 10") for cmd in commands]
+                
                 # Final cleanup for PowerShell commands on Windows
                 final_commands = []
                 
@@ -813,7 +1046,53 @@ Return ONLY the raw commands, one per line, with NO explanations, backticks, or 
     
     def execute_command(self, command: str) -> Dict:
         """Execute a command and return its result"""
-        print(f"{Fore.CYAN}Executing: {command}{Style.RESET_ALL}")
+        # Special handling for common tasks on Windows
+        if platform.system() == "Windows":
+            # Handle "find large files" command for Windows
+            if re.search(r"find.*files.*larger than.*MB", command.lower()):
+                size_match = re.search(r"(\d+)\s*MB", command.lower())
+                size_mb = "10"  # Default size
+                
+                if size_match:
+                    size_mb = size_match.group(1)
+                
+                # Execute PowerShell directly
+                print(f"{Fore.CYAN}Executing direct PowerShell command for finding large files...{Style.RESET_ALL}")
+                command = f'powershell -Command "Get-ChildItem -Path . -Recurse -File | Where-Object {{ $_.Length -gt ({size_mb} * 1MB) }} | Sort-Object Length -Descending | Select-Object @{{Name=\'Size (MB)\';Expression={{[math]::Round($_.Length / 1MB, 2)}}}}, FullName | Format-Table -AutoSize"'
+            
+            # Special handling for real-time monitoring commands
+            if ("Get-Counter" in command or 
+                "real-time" in command.lower() or 
+                "continuous" in command.lower() or
+                "monitor" in command.lower() and "cpu" in command.lower() or
+                "monitor" in command.lower() and "memory" in command.lower()):
+                
+                print(f"{Fore.YELLOW}Executing real-time monitoring command: {command}{Style.RESET_ALL}")
+                
+                # Convert to a non-continuous command that runs for a limited time
+                if "Get-Counter" in command and "-Continuous" in command:
+                    # Replace -Continuous with -MaxSamples for a limited run
+                    command = command.replace("-Continuous", "-MaxSamples 10")
+                
+                # For monitoring commands, use direct execution that doesn't rely on streaming
+                print(f"{Fore.CYAN}Starting monitoring (will run for a short time)...{Style.RESET_ALL}")
+        
+        # Original command execution code continues here
+        print(f"{Fore.YELLOW}Executing: {command}{Style.RESET_ALL}")
+        
+        command_data = {
+            "command": command,
+            "stdout": "",
+            "stderr": "",
+            "exit_code": 0,
+            "execution_time": 0,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Add command to task if we're in a task
+        if hasattr(self, 'context') and hasattr(self.context, 'current_task') and self.context.current_task:
+            self.context.add_command_to_current_task(command_data)
+        
         start_time = time.time()
         
         # For cd commands, use our internal method
